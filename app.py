@@ -4,7 +4,7 @@ Rave Atlas — Streamlit UI.
 Four tabs, a Berlin-first agent, and one deliberate non-agent browser:
 
   🗓 Raves in Berlin  — Berlin event discovery, compare, ratings (ReAct agent)
-  📚 Learn Music      — music education chat, grounded in the KB (ReAct agent, RAG)
+  📖 Rave Wiki        — music education chat, grounded in the KB (ReAct agent, RAG)
   🎛 Set Builder      — 1-hour set builder (direct, deterministic tool call)
   🌍 Explore Europe   — browse other European Resident Advisor cities (plain API browse)
 
@@ -552,14 +552,14 @@ def _tab_weekend(settings: dict) -> None:
 
 def _tab_learn(settings: dict) -> None:
     st.markdown(
-        "**Everything about electronic music, in one place.** Genres and subgenres, "
-        "BPM signatures, chord theory, Berlin scene history, record labels, what to "
-        "expect at your first rave, and how to recover after. "
+        "**Your electronic music and rave culture reference.** Genres and subgenres, "
+        "BPM signatures, harmonic analysis, Berlin scene history, record labels, what to "
+        "expect at your first rave, and how to look after yourself after. "
         "Answers come from the curated Rave Atlas knowledge base."
     )
     st.caption(
         "Try: genre history, BPM ranges, what a specific label sounds like, "
-        "rave etiquette, harm reduction, or how house and techno structure their tracks differently."
+        "rave etiquette and door culture, harm reduction, chord theory in house vs techno."
     )
     st.divider()
     _render_chat("learn", "Ask anything about electronic music, Berlin's scene, or rave culture.")
@@ -680,7 +680,7 @@ def _render_intro() -> None:
             "- **🗓 Raves in Berlin** — live Berlin events from Resident Advisor, ranked by "
             "fit to your taste. Any date, any genre, any price range. Every event name links "
             "straight to its RA page. Rate picks 👍/👎 to teach the agent your preferences.\n"
-            "- **📚 Learn Music** — genres, BPM signatures, scene history, labels, track "
+            "- **📖 Rave Wiki** — genres, BPM signatures, scene history, labels, track "
             "anatomy, rave culture, harm reduction. Grounded in the curated knowledge base.\n"
             "- **🎛 Set Builder** — describe a slot or vibe, get a 1-hour playable set: "
             "16 tracks with a warm-up / build / peak / close arc, Deezer previews, and YouTube links.\n"
@@ -708,7 +708,7 @@ def main() -> None:
     _render_intro()
 
     tab_weekend, tab_learn, tab_mix, tab_beyond = st.tabs(
-        ["🗓 Raves in Berlin", "📚 Learn Music", "🎛 Set Builder", "🌍 Explore Europe"]
+        ["🗓 Raves in Berlin", "📖 Rave Wiki", "🎛 Set Builder", "🌍 Explore Europe"]
     )
     with tab_weekend:
         _tab_weekend(settings)
