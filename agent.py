@@ -255,6 +255,7 @@ def _extract_tool_trace(messages: list) -> list[dict[str, Any]]:
             entry["output_preview"] = content[:_MAX_TOOL_OUTPUT_PREVIEW] + (
                 "…" if len(content) > _MAX_TOOL_OUTPUT_PREVIEW else ""
             )
+            entry["full_output"] = content  # full JSON for setlist/ratings rendering
             trace.append(entry)
 
     # Any tool calls that never got a response (loop bailed mid-call)
@@ -295,6 +296,7 @@ def run_agent(
     model_id: str | None = None,
     tone: str = "friendly",
     temperature: float = 0.7,
+    top_p: float = 1.0,
 ) -> dict[str, Any]:
     """
     Run a single user turn through the Rave Atlas ReAct agent.
@@ -339,7 +341,7 @@ def run_agent(
     profile = memory.load_profile(session_id)
     system_prompt = build_system_prompt(tone=tone, taste_profile=profile)
     fenced_message = safety.fence("USER_INPUT", message)
-    chat_model = llm_client.get_chat_model(model_id=model_id, temperature=temperature)
+    chat_model = llm_client.get_chat_model(model_id=model_id, temperature=temperature, top_p=top_p)
     checkpointer = memory.get_checkpointer()
 
     agent = create_agent(

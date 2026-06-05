@@ -234,6 +234,7 @@ def chat(
 def get_chat_model(
     model_id: str | None = None,
     temperature: float = 0.7,
+    top_p: float = 1.0,
 ) -> ChatOpenAI:
     """
     Return a LangChain ChatOpenAI instance wired to the correct provider.
@@ -250,12 +251,14 @@ def get_chat_model(
             api_key=config.OLLAMA_API_KEY or "ollama",
             base_url=config.OLLAMA_BASE_URL,
             temperature=temperature,
+            top_p=top_p,
         )
     return ChatOpenAI(
         model=model_id,
         api_key=config.OPENROUTER_API_KEY,
         base_url=config.OPENROUTER_BASE_URL,
         temperature=temperature,
+        top_p=top_p,
         default_headers={
             "HTTP-Referer": "https://github.com/rave-atlas",
             "X-Title": "Rave Atlas",
