@@ -28,6 +28,24 @@ from agent import run_agent
 from automation.weekend_digest import generate_digest, get_scheduler
 
 
+# ── Knowledge-base warm-up (Streamlit Cloud cold start) ───────────────────────
+
+@st.cache_resource(show_spinner="Building knowledge base — first run only…")
+def _ensure_kb_seeded() -> None:
+    """
+    Seed ChromaDB on the first process start.
+
+    On Streamlit Cloud the data/ directory is empty on every fresh container.
+    This runs ingest() once (downloading the ~80 MB sentence-transformer model
+    and embedding all seven KB files) so that explain_music works immediately.
+    Cached by @st.cache_resource, so it runs at most once per server process.
+    """
+    from ingest import get_collection, ingest
+    col = get_collection()
+    if col.count() == 0:
+        ingest()
+
+
 # ── Session state initialisation ──────────────────────────────────────────────
 
 def _init_session() -> None:
@@ -436,6 +454,7 @@ def main() -> None:
         initial_sidebar_state="expanded",
     )
 
+    _ensure_kb_seeded()  # no-op after first run; seeds ChromaDB on cold start
     _init_session()
     get_scheduler()   # idempotent — starts the Friday digest job if not running
 
