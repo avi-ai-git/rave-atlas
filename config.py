@@ -32,44 +32,44 @@ OLLAMA_BASE_URL: str = os.environ.get("OLLAMA_BASE_URL", "https://ollama.com/v1"
 
 # ── Curated model list ────────────────────────────────────────────────────────
 #
-# Two providers, five models. "provider" tells llm_client.py which base URL
-# and API key to use — no if/elif sprawl at call sites.
+# Haiku 4.5 is the active model — fastest, cheapest, works out-of-the-box on
+# default OpenRouter accounts without privacy-policy configuration.
 #
-# Anthropic via OpenRouter: quality + reliability for graded deliverables.
-# Ollama Cloud: open-source options that satisfy optional task #9 (multi-model)
-#               without turning the picker into a model zoo.
+# To re-enable additional models, uncomment the entries below and restart.
+# Multi-model support is architecturally in place (see llm_client.py).
 
 AVAILABLE_MODELS: list[dict[str, str]] = [
-    {
-        "id": "anthropic/claude-sonnet-4.6",
-        "name": "Claude Sonnet 4.6",
-        "provider": "openrouter",
-    },
     {
         "id": "anthropic/claude-haiku-4.5",
         "name": "Claude Haiku 4.5 (fast)",
         "provider": "openrouter",
     },
-    {
-        "id": "anthropic/claude-opus-4.7",
-        "name": "Claude Opus 4.7 (quality)",
-        "provider": "openrouter",
-    },
-    {
-        "id": "openai/gpt-5.5",
-        "name": "GPT-5.5 (OpenAI via OpenRouter)",
-        "provider": "openrouter",
-    },
-    {
-        "id": "gemma3:27b",
-        "name": "Gemma 3 27B (open-source)",
-        "provider": "ollama",
-    },
-    {
-        "id": "gpt-oss:120b",
-        "name": "GPT-OSS 120B (open-source)",
-        "provider": "ollama",
-    },
+    # -- uncomment to re-enable additional models --
+    # {
+    #     "id": "anthropic/claude-sonnet-4.6",
+    #     "name": "Claude Sonnet 4.6",
+    #     "provider": "openrouter",
+    # },
+    # {
+    #     "id": "anthropic/claude-opus-4.7",
+    #     "name": "Claude Opus 4.7 (quality)",
+    #     "provider": "openrouter",
+    # },
+    # {
+    #     "id": "openai/gpt-5.5",
+    #     "name": "GPT-5.5 (OpenAI via OpenRouter)",
+    #     "provider": "openrouter",
+    # },
+    # {
+    #     "id": "gemma3:27b",
+    #     "name": "Gemma 3 27B (open-source)",
+    #     "provider": "ollama",
+    # },
+    # {
+    #     "id": "gpt-oss:120b",
+    #     "name": "GPT-OSS 120B (open-source)",
+    #     "provider": "ollama",
+    # },
 ]
 
 # Default to Haiku 4.5: cheapest tier, fastest, and the model that reliably
@@ -91,10 +91,122 @@ MODEL_PRICES: dict[str, tuple[float, float]] = {
     "gpt-oss:120b":                 (0.0,     0.0),
 }
 
+# ── Cities ────────────────────────────────────────────────────────────────────
+#
+# Berlin is the app's *home* city — the knowledge base, persona, venue
+# commentary, and scene history are all Berlin-grade. The events tool, however,
+# is genuinely city-aware: find_events resolves any of these names to a
+# Resident Advisor area ID live (see tools/events.py).
+#
+# This curated list is limited to cities RA actually covers well. Small towns
+# (e.g. Aachen, Bonn) are deliberately excluded — RA's listings there are
+# near-empty, and the honest move is not to offer a city we can't deliver.
+# Cologne/Düsseldorf are the realistic picks for the western-Germany scene.
+
+HOME_CITY: str = os.environ.get("HOME_CITY", "Berlin")
+
+# European cities with meaningful Resident Advisor coverage.
+# Organised by region. RA's density varies: Berlin, Amsterdam, Paris, Zurich,
+# Barcelona, Belgrade and the major German cities are reliable; smaller cities
+# (Aachen, Bonn, Wrocław, etc.) often return thin or empty results and are
+# excluded to avoid misleading the user. Coverage is checked live by
+# tools/events.py → resolve_area_id(); an unknown city resolves to None and
+# the tab shows an honest "no listings" message rather than a fallback.
+AVAILABLE_CITIES: list[str] = [
+    # ── Germany ──────────────────────────────────────────────────────────────
+    "Berlin",       # home city — full KB depth
+    "Hamburg",
+    "Cologne",
+    "Frankfurt",
+    "Munich",
+    "Leipzig",
+    "Düsseldorf",
+    "Stuttgart",
+    "Nuremberg",
+    "Dresden",
+    "Mannheim",
+    "Hannover",
+    # ── Austria & Switzerland ─────────────────────────────────────────────────
+    "Vienna",
+    "Zurich",
+    "Geneva",
+    "Basel",
+    "Graz",
+    # ── Netherlands & Belgium ─────────────────────────────────────────────────
+    "Amsterdam",
+    "Rotterdam",
+    "Utrecht",
+    "Eindhoven",
+    "Brussels",
+    "Ghent",
+    "Antwerp",
+    # ── France ───────────────────────────────────────────────────────────────
+    "Paris",
+    "Lyon",
+    "Marseille",
+    "Bordeaux",
+    "Toulouse",
+    "Strasbourg",
+    "Lille",
+    "Nantes",
+    # ── Iberia ───────────────────────────────────────────────────────────────
+    "Barcelona",
+    "Madrid",
+    "Valencia",
+    "Ibiza",
+    "Seville",
+    "Lisbon",
+    "Porto",
+    # ── Italy ────────────────────────────────────────────────────────────────
+    "Milan",
+    "Rome",
+    "Bologna",
+    "Florence",
+    "Turin",
+    "Naples",
+    # ── Scandinavia ──────────────────────────────────────────────────────────
+    "Copenhagen",
+    "Stockholm",
+    "Gothenburg",
+    "Malmö",
+    "Oslo",
+    "Bergen",
+    "Helsinki",
+    # ── Eastern Europe ───────────────────────────────────────────────────────
+    "Warsaw",
+    "Kraków",
+    "Gdańsk",
+    "Prague",
+    "Brno",
+    "Budapest",
+    "Bucharest",
+    "Cluj-Napoca",
+    "Belgrade",
+    "Zagreb",
+    "Ljubljana",
+    "Vilnius",
+    "Riga",
+    "Tallinn",
+    # ── Greece & Turkey ──────────────────────────────────────────────────────
+    "Athens",
+    "Thessaloniki",
+    "Istanbul",
+]
+
 # ── External APIs ─────────────────────────────────────────────────────────────
 
 DISCOGS_TOKEN: str = os.environ.get("DISCOGS_TOKEN", "")
 MISTRAL_API_KEY: str = os.environ.get("MISTRAL_API_KEY", "")
+
+# ── Telegram weekend digest (optional automation) ─────────────────────────────
+#
+# The Friday weekend digest is sent to Telegram by a standalone script
+# (automation/weekend_telegram.py) run from a GitHub Actions cron — NOT from the
+# Streamlit process, which can't be relied on to be awake on a schedule. Both
+# values are optional: if either is missing, the sender logs and no-ops cleanly.
+
+TELEGRAM_BOT_TOKEN: str = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID: str = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 # ── Observability: LangSmith ──────────────────────────────────────────────────
 
@@ -139,8 +251,8 @@ if __name__ == "__main__":
     assert any(
         m["provider"] == "openrouter" for m in AVAILABLE_MODELS
     ), "At least one OpenRouter model required"
-    assert any(
-        m["provider"] == "ollama" for m in AVAILABLE_MODELS
-    ), "At least one Ollama Cloud model required"
+    # Ollama models are commented out by default — remove this assertion when
+    # re-enabling open-source models:
+    # assert any(m["provider"] == "ollama" for m in AVAILABLE_MODELS)
 
     print("All config assertions passed.")

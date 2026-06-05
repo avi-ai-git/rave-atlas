@@ -2,7 +2,7 @@
 
 > **Berlin's electronic music agent** — weekend event concierge, music education, and set-list builder in one Streamlit app.
 
-[![Tests](https://img.shields.io/badge/tests-124%20passed-brightgreen)](#running-tests)
+[![Tests](https://img.shields.io/badge/tests-142%20passed-brightgreen)](#running-tests)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
 [![Built with Claude Code](https://img.shields.io/badge/built%20with-Claude%20Code-orange)](https://claude.ai/code)
 
@@ -12,10 +12,12 @@
 
 Berlin has the densest electronic music scene on earth. Planning a night out means 20 open tabs, domain knowledge you may not have, and still picking wrong. Rave Atlas solves this with a single AI agent that:
 
-- **Finds live Berlin events** from Resident Advisor and _reasons_ about which match your taste and budget — not just lists them
+- **Finds live Berlin events** from Resident Advisor and _reasons_ about which match your taste and budget — not just lists them. Every event links straight to its Resident Advisor page for details and tickets
 - **Teaches you the music** — genres, BPM signatures, scene history, record labels — from a curated knowledge base
 - **Builds playable set lists** with a DJ energy arc, 30-second Deezer previews, and YouTube links
-- **Learns your preferences** — rates events with 👍/👎, stores taste in SQLite, sends a Friday-morning weekend briefing
+- **Learns your preferences** — rate events with 👍/👎, stored in SQLite to sharpen future picks
+- **Browses beyond Berlin** in a dedicated _Go International_ tab — other Resident Advisor cities (Hamburg, Cologne, Amsterdam, London, Paris…) via a direct, honest event browse
+- **Sends a Friday-morning Telegram digest** of the Berlin weekend with ticket links, fired by a GitHub Actions cron independent of the app
 
 ---
 
@@ -34,13 +36,16 @@ A static chain decides the path at author-time. A ReAct agent decides at runtime
 
 ## Features
 
-| Tab | What it does |
-|-----|-------------|
-| 🗓 **This Weekend** | Live RA events · compare & rank by taste · thumbs rating loop · Friday digest |
-| 📚 **Learn** | RAG over curated KB: genres, scene history, labels, DJ theory |
-| 🎛 **Crate** | Set-list builder: energy arc + Deezer previews + YouTube links |
+| Tab | What it does | How it's built |
+|-----|-------------|----------------|
+| 🗓 **This Weekend** | Live Berlin RA events as cards with ticket links · compare & rank by taste · thumbs rating loop · Friday digest | ReAct agent |
+| 📚 **Learn** | Genres, scene history, labels, DJ theory | ReAct agent + RAG |
+| 🎛 **Crate** | Set-list builder: energy arc + Deezer previews + YouTube links | Direct tool call (deterministic) |
+| 🌍 **Go International** | Browse other Resident Advisor cities by date/genre/price | Direct tool call (no agent) |
 
-**Sidebar controls:** model picker (6 models, 2 providers) · tone radio · temperature + top-p sliders · per-query token/cost display · clear-chat
+Crate and Go-International call their tool directly rather than through the agent — a deliberate choice: a single, well-defined task is more reliable as a deterministic call than as a model deciding whether to make it. (This also fixes a bug where a repeat set-list request came back as plain text instead of a playable set.)
+
+**Sidebar controls:** model picker (6 models, 2 providers) · tone radio · temperature + top-p sliders (under _Advanced_) · per-query token/cost display · clear-chat
 
 ---
 
@@ -182,11 +187,12 @@ uv run pytest tests/test_injection.py   # OWASP injection corpus only
 | File | Tests | What's covered |
 |------|-------|---------------|
 | `test_safety.py` | 28 | `validate_input`, `RateLimiter`, `fence`, `moderate` |
-| `test_injection.py` | 37 | 19 OWASP/jailbreak vectors · 12 false-positive music queries · fence structural tests |
-| `test_tools.py` | 24 | `explain_music` (ChromaDB mock) · `enrich_artist` (Discogs/MusicBrainz mock) · `find_events` (RA mock) |
+| `test_injection.py` | 57 | OWASP/jailbreak vectors · false-positive music queries · fence structural tests |
+| `test_tools.py` | 31 | `explain_music` (ChromaDB mock) · `enrich_artist` (Discogs/MusicBrainz mock) · `find_events` + `resolve_area_id` city routing (RA mock) |
 | `test_setlist.py` | 15 | `build_setlist` shape · energy clamping · Deezer hit/miss · LLM failure fallback |
+| `test_telegram.py` | 11 | weekend digest HTML formatting · HTML escaping · Telegram-cap truncation · send no-op/success paths |
 
-All tests run offline — every external API is mocked. No network access required.
+All 142 tests run offline — every external API is mocked. No network access required.
 
 ---
 
@@ -208,18 +214,22 @@ rave-atlas/
 │   └── compare.py          Event-ranking reasoning rubric
 ├── tools/
 │   ├── music_kb.py         explain_music: RAG, allowlist, gap-honesty
-│   ├── events.py           find_events (RA GraphQL) + compare_events (LLM)
+│   ├── events.py           find_events (RA GraphQL, city-aware) + compare_events (LLM)
 │   ├── artists.py          enrich_artist: Discogs → MusicBrainz fallback
 │   └── setlist.py          build_setlist: LLM arc + Deezer + YouTube
 ├── automation/
-│   └── weekend_digest.py   APScheduler Fri 09:00 → Fri–Tue briefing → SQLite
+│   ├── weekend_digest.py   APScheduler Fri 09:00 → Fri–Tue briefing → SQLite (in-app)
+│   └── weekend_telegram.py Standalone Berlin digest → Telegram (run by GitHub Actions)
+├── .github/workflows/
+│   └── weekend-digest.yml  Cron (Fri 07:00 UTC) → weekend_telegram, app-independent
 ├── knowledge_base/         Curated markdown: genres, labels, history, theory
-└── tests/                  124 offline pytest tests
+└── tests/                  142 offline pytest tests
     ├── conftest.py          autouse cache-clearing fixture
     ├── test_safety.py
     ├── test_injection.py
     ├── test_tools.py
-    └── test_setlist.py
+    ├── test_setlist.py
+    └── test_telegram.py
 ```
 
 ---
@@ -235,11 +245,39 @@ rave-atlas/
 
 ---
 
+## Deployment & weekend automation
+
+**Streamlit Community Cloud**
+
+1. Push this repo to GitHub (the app reads everything from env vars / secrets).
+2. On [share.streamlit.io](https://share.streamlit.io), create an app pointing at `app.py`.
+3. In the app's **Settings → Secrets**, paste the keys from `.streamlit/secrets.toml.example`
+   (at minimum `OPENROUTER_API_KEY`; `DISCOGS_TOKEN` for artist enrichment).
+4. First load seeds ChromaDB automatically (~30 s cold start). Note: SQLite/Chroma are
+   ephemeral on Cloud — taste profiles reset on container restart (see Known limitations).
+
+**Friday Telegram digest (optional, app-independent)**
+
+The weekend digest is sent by `automation/weekend_telegram.py`, run on a GitHub Actions
+cron (`.github/workflows/weekend-digest.yml`) — it fires whether or not the Streamlit app
+is awake, which an in-app scheduler can't guarantee on Cloud.
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) → copy the **bot token**.
+2. Get your target **chat ID** (message the bot, then read `getUpdates`, or use a group/@channel).
+3. In the GitHub repo: **Settings → Secrets and variables → Actions** → add
+   `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`.
+4. Trigger it manually from the **Actions** tab ("Run workflow") to test; it then runs every
+   Friday at 07:00 UTC. The message lists the Berlin Fri→Tue lineup, each linked to RA.
+
+---
+
 ## Known limitations
 
 | Limitation | Impact | Migration path |
 |------------|--------|---------------|
 | RA has no official public API | `find_events` uses an unofficial GraphQL endpoint — may change | Maintained third-party scraper or RA affiliate programme |
+| Multi-city coverage is RA-bounded | Agent core is Berlin-only by design; the _Go International_ tab browses other RA cities but small towns (Aachen, Bonn) return little/nothing — the tab says so honestly | Add **Ticketmaster Discovery API** (free, official, broader pan-EU) as a second source — `find_events` is already city-parameterised for it |
+| In-app scheduler can't run on Streamlit Cloud | The app sleeps when idle, so the APScheduler digest won't fire on schedule there | Telegram weekend digest is decoupled into a **GitHub Actions cron** that runs app-independently; in-app scheduler kept for local/demo |
 | Spotify audio-features API deprecated (Nov 2024) | No programmatic BPM/energy data | Deezer public API (used) + AcousticBrainz |
 | SQLite is local-only | Memory doesn't persist across Streamlit Cloud container restarts | Firebase Realtime DB or PostgreSQL + pgvector |
 | ChromaDB seeded at runtime | ~30-second cold start on Streamlit Cloud | Commit pre-built ChromaDB or use a hosted vector DB |

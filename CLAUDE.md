@@ -84,7 +84,7 @@ Each phase produced one commit. The sequence is dependency-correct: each phase o
 | 9 | `memory.py` | LangGraph `SqliteSaver` + SQLite taste profile + feedback loop | Sonnet | think harder |
 | 10 | `agent.py` | `run_agent()` via `langchain.agents.create_agent` — safety gate → checkpointer-backed memory → system prompt → five tools | **Opus** | ultrathink |
 | 11 | `automation/weekend_digest.py` | APScheduler job: Friday AM → Fri–Tue briefing → written to store | Sonnet | think |
-| 12 | `app.py` (full) | Streamlit UI: 3 tabs, model picker, sliders, tool-trace expander, ratings, cost display | Sonnet | think harder |
+| 12 | `app.py` (full) | Streamlit UI: 4 tabs (Weekend/Learn/Crate agent + Go-International browse), model picker, sliders, tool-trace expander, event cards with RA links, ratings, cost display | Sonnet | think harder |
 | 13 | `tests/` | pytest suite: safety, tools, injection corpus (OWASP + jailbreaks), setlist | Sonnet | think |
 | 14 | `README.md`, LangSmith wiring | Observability, docs, Streamlit Cloud deploy prep | Sonnet | think |
 
@@ -232,7 +232,10 @@ rave-atlas/
 │   ├── artists.py          enrich_artist (Discogs → MusicBrainz fallback)
 │   └── setlist.py          build_setlist (LLM energy arc + Deezer + YouTube)
 ├── automation/
-│   └── weekend_digest.py   APScheduler Fri-AM job → Fri–Tue briefing → SQLite
+│   ├── weekend_digest.py   APScheduler Fri-AM job → Fri–Tue briefing → SQLite (local/in-app)
+│   └── weekend_telegram.py Standalone Fri-AM Berlin digest → Telegram (run by GitHub Actions cron)
+├── .github/workflows/
+│   └── weekend-digest.yml  Cron (Fri 07:00 UTC) → uv run weekend_telegram (app-independent)
 ├── knowledge_base/         Curated markdown: genres, history, labels, theory
 │   ├── genres_techno.md
 │   ├── genres_house.md
@@ -290,9 +293,10 @@ This is an explicit Sprint 3 rubric question. The project uses all three, delibe
 |---|---|---|
 | **Prompt engineering** | `prompts/system.py`, `prompts/setlist.py`, `prompts/compare.py` | Shapes every LLM response — the agent's persona, its few-shot set-list examples, and the structured reasoning rubric for comparing events. Applied at author-time to a single generation step. |
 | **RAG** | `tools/music_kb.py` → `explain_music` | Grounds music-theory answers in the curated KB. Used when facts must be sourced (not invented) and the answer depends on a static, curated corpus. |
-| **Agent (ReAct)** | `agent.py` → `run_agent()` | Used for the full application because the task requires multi-step reasoning with runtime tool selection. The agent decides which of the five tools to call based on the user's request — a decision that cannot be made at author-time. |
+| **Agent (ReAct)** | `agent.py` → `run_agent()`; Weekend + Learn tabs | Used where the task requires multi-step reasoning with runtime tool selection. The agent decides which of the five tools to call based on the user's request — a decision that cannot be made at author-time. |
+| **Direct tool call (no agent)** | Crate tab → `build_setlist`; Go-International tab → `find_events` | Used where the task is a single, well-defined retrieval/generation with no branching. Crate always wants exactly one fully-enriched set; International always wants exactly one city's listings. Routing these through a ReAct loop adds latency, cost, and a failure mode (the model may decline to call the tool — the original "second set-list came back as plain text" bug) for zero benefit. Calling the tool directly is the honest, reliable choice. |
 
-RAG alone could power the Learn tab. Prompt engineering alone could build a fixed chatbot. Only the agent can handle "find me hypnotic techno this Friday under €20 near Kreuzberg" — which requires fetching events, enriching artists, comparing against the taste profile, and synthesising a recommendation in one turn.
+RAG alone could power the Learn tab. Prompt engineering alone could build a fixed chatbot. Only the agent can handle "find me hypnotic techno this Friday under €20 near Kreuzberg" — which requires fetching events, enriching artists, comparing against the taste profile, and synthesising a recommendation in one turn. But the inverse discipline matters too: **knowing when *not* to reach for the agent.** Crate and Go-International are deliberately agent-free because a deterministic call is more reliable than asking a model to decide to make it. Picking the right altitude per surface — agent, RAG, prompt, or plain function — is the architecture, not a default.
 
 ---
 
@@ -301,6 +305,8 @@ RAG alone could power the Learn tab. Prompt engineering alone could build a fixe
 | Limitation | Impact | Migration path |
 |---|---|---|
 | Resident Advisor has no official public API | `find_events` calls an unofficial GraphQL endpoint — it may change or break | Use a maintained third-party scraper (e.g., Apify's RA template) or the official RA affiliate programme if/when available |
+| Multi-city coverage is RA-bounded | The agent core (Weekend/Learn/Crate) is Berlin-only by design — that's where the KB, persona, and depth are real. The **Go-International** tab exposes `find_events` for other cities (resolved live via RA's `areas(searchTerm)` query), but RA's listings are dense only for major scenes (Berlin, Hamburg, Cologne, Amsterdam, London, Paris). Small towns (Aachen, Bonn) return little or nothing — the tab says so honestly rather than faking results. | Add **Ticketmaster Discovery API** (free, official, broader pan-EU ticketed coverage) as a second source merged + deduped with RA — `find_events` is already city-parameterised for this seam. Bandsintown can add artist-tour lookups. |
+| Scheduled automation can't live in the Streamlit process | Streamlit Community Cloud sleeps the app when idle, so the in-app APScheduler digest won't fire on a real Friday-morning schedule, and SQLite/Chroma are ephemeral across restarts. | The Telegram weekend digest is decoupled into `automation/weekend_telegram.py`, fired by a **GitHub Actions cron** (`.github/workflows/weekend-digest.yml`) that runs whether or not the app is awake. The in-app APScheduler + "generate now" button are kept for local/demo use. For durable user memory, migrate SQLite → Firebase/Postgres. |
 | Spotify audio-features API deprecated (Nov 2024) | Cannot pull BPM/energy/danceability programmatically | Deezer's public API still works; AcousticBrainz is an open alternative |
 | SQLite for memory is local-only | Won't work on stateless cloud deployments without a writable volume | Migrate to Firebase Realtime DB (direct drop-in for the profile table) or PostgreSQL + pgvector (replaces both SQLite and ChromaDB) |
 | Knowledge base is static markdown | KB must be manually updated as genres evolve | Add an admin UI for KB editing + re-ingestion trigger |

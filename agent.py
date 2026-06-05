@@ -19,6 +19,8 @@ Public surface consumed by Phase 12 (app.py):
         model_id:      str | None = None,
         tone:          str = "friendly",
         temperature:   float = 0.7,
+        top_p:         float = 1.0,
+        thread_key:    str | None = None,   # per-tab thread; defaults session_id
     ) -> dict
 
 The return dict carries the assistant text plus everything the UI needs
@@ -142,8 +144,8 @@ def find_events(
 ) -> list[dict[str, Any]]:
     """Fetch upcoming Berlin club events from Resident Advisor.
 
-    CALL THIS TOOL when the user asks about live or upcoming Berlin events
-    on specific dates ("this Friday", "tonight", "next weekend"). Translate
+    CALL THIS TOOL when the user asks about live or upcoming Berlin events on
+    specific dates ("this Friday", "tonight", "next weekend"). Translate
     relative dates to ISO format (YYYY-MM-DD) before calling.
 
     Args:
@@ -155,8 +157,9 @@ def find_events(
             "venue"     (str)    — partial venue-name match
             "area"      (str)    — partial Berlin-neighbourhood match
 
-    Returns a list of normalised event dicts; empty list when RA is
-    unreachable or returns nothing. Never invents events.
+    Returns a list of normalised Berlin event dicts; empty list when RA is
+    unreachable or returns nothing. Never invents events. Each event includes a
+    `url` field — the Resident Advisor page for that event; always cite it.
     """
     return _find_events_fn(date_from=date_from, date_to=date_to, filters=filters)
 
@@ -297,6 +300,7 @@ def run_agent(
     tone: str = "friendly",
     temperature: float = 0.7,
     top_p: float = 1.0,
+    thread_key: str | None = None,
 ) -> dict[str, Any]:
     """
     Run a single user turn through the Rave Atlas ReAct agent.
@@ -307,13 +311,20 @@ def run_agent(
       3. moderate        — Mistral classifier, score-gated
       4. fence user msg  — defence-in-depth on top of moderation
       5. load profile    — inject into system prompt
-      6. invoke agent    — checkpointer keyed by session_id
+      6. invoke agent    — checkpointer keyed by thread_key (defaults session_id)
       7. aggregate       — pull text, tool trace, tokens, cost out of state
 
     Any failure in steps 1-3 short-circuits with blocked=True and a
     user-safe reason. No tokens are spent on blocked turns.
+
+    Args:
+        thread_key: LangGraph conversation thread. Defaults to session_id.
+            The UI passes a per-tab key (e.g. "<session>:weekend") so each tab
+            keeps an isolated conversation — a Learn question never bleeds into
+            the Weekend planner's context, and vice versa.
     """
     model_id = model_id or config.DEFAULT_MODEL
+    thread_key = thread_key or session_id
 
     # ── 1. structural validation ──────────────────────────────────────────────
     ok, reason = safety.validate_input(message, session_id=session_id)
@@ -333,8 +344,7 @@ def run_agent(
         logger.info("agent_blocked_moderation", session_id=session_id)
         return _blocked(
             model_id,
-            "Your message was flagged by the content classifier. "
-            "Please rephrase it as a question about Berlin's music scene.",
+            "That message couldn't be processed — try rephrasing it.",
         )
 
     # ── 4. assemble the run ───────────────────────────────────────────────────
@@ -355,7 +365,7 @@ def run_agent(
     try:
         result = agent.invoke(
             {"messages": [{"role": "user", "content": fenced_message}]},
-            config={"configurable": {"thread_id": session_id}},
+            config={"configurable": {"thread_id": thread_key}},
         )
     except Exception as exc:
         logger.error("agent_invoke_failed", error=str(exc)[:200], session_id=session_id)

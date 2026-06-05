@@ -319,3 +319,58 @@ class TestFindEvents:
         mocker.patch("requests.post", return_value=_ra_response([_ra_row()]))
         events = events_mod.find_events("2024-01-05", "2024-01-07")
         assert events[0]["url"].startswith("https://ra.co")
+
+    def test_default_city_uses_seed_cache_no_resolve_call(self, mocker):
+        """Berlin (the seed) must not trigger a separate areas() resolve request."""
+        post = mocker.patch("requests.post", return_value=_ra_response([_ra_row()]))
+        events_mod.find_events("2024-01-05", "2024-01-07")
+        # Exactly one POST: the events query. No separate areas() resolution.
+        assert post.call_count == 1
+
+    def test_events_tagged_with_queried_city(self, mocker):
+        mocker.patch("requests.post", return_value=_ra_response([_ra_row()]))
+        events = events_mod.find_events("2024-01-05", "2024-01-07", city="Berlin")
+        assert events[0]["city"] == "Berlin"
+
+
+# ── TestResolveAreaId ─────────────────────────────────────────────────────────
+
+def _ra_areas_response(areas: list[dict]) -> Mock:
+    resp = Mock()
+    resp.json.return_value = {"data": {"areas": areas}}
+    resp.raise_for_status = Mock()
+    return resp
+
+
+class TestResolveAreaId:
+    def test_seeded_city_returns_without_network(self, mocker):
+        post = mocker.patch("requests.post")
+        assert events_mod.resolve_area_id("Berlin") == 34
+        assert events_mod.resolve_area_id("berlin") == 34  # case-insensitive
+        post.assert_not_called()
+
+    def test_resolves_new_city_via_areas_query_and_caches(self, mocker):
+        post = mocker.patch(
+            "requests.post",
+            return_value=_ra_areas_response([{"id": "88", "name": "Cologne", "country": {"name": "Germany"}}]),
+        )
+        assert events_mod.resolve_area_id("Cologne") == 88
+        # Cached: second call hits no network.
+        assert events_mod.resolve_area_id("cologne") == 88
+        assert post.call_count == 1
+
+    def test_unknown_city_returns_none(self, mocker):
+        mocker.patch("requests.post", return_value=_ra_areas_response([]))
+        assert events_mod.resolve_area_id("Nowheresville-XYZ-123") is None
+
+    def test_network_error_returns_none(self, mocker):
+        import requests as req
+        mocker.patch("requests.post", side_effect=req.RequestException("boom"))
+        assert events_mod.resolve_area_id("Someplace-Unique-456") is None
+
+    def test_find_events_returns_empty_for_unresolvable_city(self, mocker):
+        """No silent Berlin fallback — an uncovered city yields [] and no events query."""
+        post = mocker.patch("requests.post", return_value=_ra_areas_response([]))
+        events = events_mod.find_events("2024-01-05", "2024-01-07", city="Tinytown-Unique-789")
+        assert events == []
+        assert post.call_count == 1  # only the areas() resolve, no events query

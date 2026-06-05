@@ -74,12 +74,28 @@ def validate_input(
 
 _MISTRAL_MODERATION_URL = "https://api.mistral.ai/v1/moderations"
 
+# These categories use a higher threshold because words like "rave", "trip",
+# "high", and "substance" are legitimate music/culture terminology in this
+# app's domain. Applying the default 0.7 threshold causes false positives
+# on completely benign queries like "find me events at the rave this weekend".
+_LENIENT_CATEGORIES: frozenset[str] = frozenset({
+    "illegal_drugs_and_tobacco_or_alcohol",
+    "drugs",
+    "substance_abuse",
+    "substance",
+})
+_LENIENT_THRESHOLD: float = 0.92  # require near-certainty for drug categories
+
 
 def moderate(text: str) -> tuple[bool, dict[str, float]]:
     """
     Run text through the Mistral moderation classifier.
 
     Gates on per-category probability scores (not substring matching).
+    Drug/substance categories use a higher threshold (_LENIENT_THRESHOLD)
+    because words like "rave", "trip", and "high" are legitimate in a
+    music-event context. All other harmful categories use MODERATION_THRESHOLD.
+
     If the API is unavailable, fails safe (allows through) and logs the error
     so the app keeps running — an outage should not block users.
 
@@ -112,7 +128,11 @@ def moderate(text: str) -> tuple[bool, dict[str, float]]:
         flagged = {
             cat: score
             for cat, score in scores.items()
-            if score >= config.MODERATION_THRESHOLD
+            if score >= (
+                _LENIENT_THRESHOLD
+                if cat in _LENIENT_CATEGORIES
+                else config.MODERATION_THRESHOLD
+            )
         }
 
         if flagged:

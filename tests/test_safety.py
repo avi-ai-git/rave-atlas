@@ -171,6 +171,33 @@ class TestModerate:
         allowed, _ = safety.moderate("borderline content")
         assert not allowed  # >= threshold blocks
 
+    def test_drug_category_below_lenient_threshold_allowed(self, mocker):
+        """Words like 'rave' may score ~0.75 for drug categories — should pass."""
+        mock_resp = Mock()
+        mock_resp.json.return_value = {
+            "results": [{"category_scores": {
+                "illegal_drugs_and_tobacco_or_alcohol": 0.75,
+                "violence": 0.01,
+            }}]
+        }
+        mock_resp.raise_for_status = Mock()
+        mocker.patch("requests.post", return_value=mock_resp)
+        allowed, _ = safety.moderate("find rave events this weekend")
+        assert allowed  # 0.75 < _LENIENT_THRESHOLD (0.92) so should pass
+
+    def test_drug_category_at_lenient_threshold_blocked(self, mocker):
+        """Genuinely high drug scores (>= 0.92) should still be blocked."""
+        mock_resp = Mock()
+        mock_resp.json.return_value = {
+            "results": [{"category_scores": {
+                "illegal_drugs_and_tobacco_or_alcohol": safety._LENIENT_THRESHOLD,
+            }}]
+        }
+        mock_resp.raise_for_status = Mock()
+        mocker.patch("requests.post", return_value=mock_resp)
+        allowed, _ = safety.moderate("genuinely harmful drug content")
+        assert not allowed
+
     def test_api_timeout_fails_open(self, mocker):
         import requests as req
         mocker.patch("requests.post", side_effect=req.exceptions.Timeout())

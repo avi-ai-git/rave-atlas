@@ -90,27 +90,40 @@ def _deezer_search(query: str) -> dict[str, Any] | None:
     return result
 
 
-def _enrich_track_with_deezer(artist: str, title: str) -> dict[str, str | None]:
+def _enrich_track_with_deezer(
+    artist: str, title: str
+) -> dict[str, str | bool | None]:
     """
-    Return {preview_url, deezer_url} for an artist+title pair.
+    Return {preview_url, deezer_url, deezer_fallback} for an artist+title pair.
 
     Strategy:
       1. Try the exact "{artist} {title}" query.
       2. If no hit (which happens when the LLM invented a plausible-but-fake
          title), fall back to searching by artist alone — the user still
          gets a real 30s sample of that artist's actual sound.
+
+    deezer_fallback is True when the artist-only fallback was used, so the UI
+    can label the preview clearly ("similar track by {artist}") instead of
+    implying it is the exact track.
     """
     hit = _deezer_search(f"{artist} {title}")
-    if not hit:
-        time.sleep(_DEEZER_PAUSE_SECONDS)
-        hit = _deezer_search(artist)
+    if hit:
+        return {
+            "preview_url": hit.get("preview") or None,
+            "deezer_url": hit.get("link") or None,
+            "deezer_fallback": False,
+        }
+
+    time.sleep(_DEEZER_PAUSE_SECONDS)
+    hit = _deezer_search(artist)
 
     if not hit:
-        return {"preview_url": None, "deezer_url": None}
+        return {"preview_url": None, "deezer_url": None, "deezer_fallback": False}
 
     return {
         "preview_url": hit.get("preview") or None,
         "deezer_url": hit.get("link") or None,
+        "deezer_fallback": True,
     }
 
 
@@ -159,9 +172,8 @@ def build_setlist(seed: str, n: int = 8) -> dict[str, Any]:
               feel, BPM target. Examples: "hypnotic 130bpm techno for 2am",
               "deep melodic warm-up set, Watergate Friday 23h", "closing
               comedown after a hard peak, ambient-leaning".
-        n:    Number of tracks. Default 8. Keep between 4 and 12 — shorter
-              loses the arc, longer outpaces what the LLM can sustain with
-              specific reasoning.
+        n:    Number of tracks. Default 8. Keep between 4 and 20 — shorter
+              loses the arc, 16 tracks gives a full 1-hour set (4 min/track).
 
     Returns:
         {
@@ -184,7 +196,7 @@ def build_setlist(seed: str, n: int = 8) -> dict[str, Any]:
         Returns {"title": "Set unavailable", "tracks": [], "energy_arc": []}
         on LLM failure rather than raising.
     """
-    n = max(1, min(int(n), 12))  # clamp defensively
+    n = max(1, min(int(n), 20))  # clamp — 20 is the upper bound; 16 is the 1h default
     prompt = build_setlist_prompt(seed, n)
 
     logger.info("build_setlist_start", seed=seed[:80], n=n)
@@ -232,6 +244,7 @@ def build_setlist(seed: str, n: int = 8) -> dict[str, Any]:
             "energy": energy,
             "preview_url": media["preview_url"],
             "deezer_url": media["deezer_url"],
+            "deezer_fallback": bool(media.get("deezer_fallback")),
             "youtube_url": _youtube_search_url(artist, track_title),
         })
         energy_arc.append(energy)

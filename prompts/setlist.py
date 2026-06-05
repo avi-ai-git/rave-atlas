@@ -37,7 +37,19 @@ A set without an arc is just a playlist.
 }}
 
 Rules:
-- Exactly the number of tracks the user asks for.
+- Exactly the number of tracks the user asks for. For a 16-track set, assume \
+roughly 4 minutes per track = ~1 hour. Plan the arc accordingly: a full \
+opening phase (tracks 1-4), a build phase (5-8), a peak phase (9-12), and \
+a resolution/close phase (13-16).
+- **Genre and mood coherence is mandatory.** Every track in the set must be \
+stylistically consistent with the seed. If the seed is "hypnotic techno", do \
+not include progressive house or trance — ever. If the seed is "deep melodic \
+house", every track should be from that family or an adjacent one (deep house, \
+soulful house, minimal deep). Do not mix genres unless the seed explicitly asks \
+for a hybrid or eclectic set.
+- **Choose well-known or historically significant tracks and artists where possible.** \
+Prefer artists with documented releases on relevant labels (Klockworks, Ostgut Ton, \
+Tresor, Innervisions, Rush Hour, Internasjonal, etc.) over invented or implausible names.
 - The energy values across tracks must form a coherent arc — not random, \
 not monotonic.
 - Reasons should be specific to the track's position in the arc, the genre, \
@@ -45,7 +57,7 @@ the BPM transition, or the artist's role in the scene. Not generic ("great \
 track", "high energy") — concrete ("Klockworks-grade kick weight perfect for \
 locking the room at hour two").
 - Use real artists. Track titles can be real or plausible — accuracy on title \
-is less important than a believable artist + appropriate energy.
+is less important than a believable artist + appropriate energy and style fit.
 
 ---
 

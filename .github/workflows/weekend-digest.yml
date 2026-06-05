@@ -1,0 +1,42 @@
+name: Weekend digest → Telegram
+
+# Sends the Berlin weekend (Fri → Tue) Resident Advisor lineup to Telegram.
+#
+# Runs on a schedule INDEPENDENT of the Streamlit app, which is the whole point:
+# Streamlit Community Cloud sleeps when idle, so the in-app scheduler can't be
+# relied on. GitHub Actions fires regardless.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   TELEGRAM_BOT_TOKEN   – from @BotFather
+#   TELEGRAM_CHAT_ID     – the chat/channel id to post to
+#
+# No LLM key is needed: the digest is a plain, real event list with RA links.
+
+on:
+  schedule:
+    # 07:00 UTC every Friday ≈ 09:00 Europe/Berlin in summer (CEST),
+    # 08:00 in winter (CET). GitHub cron is UTC-only and DST-unaware.
+    - cron: "0 7 * * 5"
+  workflow_dispatch: {}   # allow manual "Run workflow" from the Actions tab
+
+jobs:
+  send-digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Sync dependencies
+        run: uv sync
+
+      - name: Send weekend digest to Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: uv run python -m automation.weekend_telegram
