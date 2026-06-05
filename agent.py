@@ -1,1 +1,526 @@
-"""Rave Atlas — LangGraph ReAct agent assembly. Built in Phase 10."""
+"""
+Rave Atlas — LangGraph ReAct agent assembly.
+
+This is the orchestration layer that wires every previous phase into one
+runnable agent. The split of concerns is deliberate:
+
+  - Phase 3 (safety.py)     : guards the boundary before the LLM is touched
+  - Phase 4 (llm_client.py) : provider routing + cost + LangChain ChatOpenAI
+  - Phase 5 (prompts/)      : system / setlist / compare prompts
+  - Phase 6–8 (tools/)      : the five domain tools
+  - Phase 9 (memory.py)     : SqliteSaver checkpointer + taste profile
+  - Phase 10 (this file)    : composition of all the above into run_agent()
+
+Public surface consumed by Phase 12 (app.py):
+
+    run_agent(
+        message:       str,
+        session_id:    str,
+        model_id:      str | None = None,
+        tone:          str = "friendly",
+        temperature:   float = 0.7,
+    ) -> dict
+
+The return dict carries the assistant text plus everything the UI needs
+to render the trace, cost, and feedback controls without re-deriving it:
+
+    {
+        "text":          str,            # final assistant reply (or block reason)
+        "blocked":       bool,           # True if a safety gate refused the turn
+        "block_reason":  str,            # populated only when blocked
+        "tool_calls":    list[dict],     # name + args + truncated output per call
+        "usage":         dict,           # aggregated prompt/completion/total tokens
+        "cost_estimate": float,          # rough USD across all reasoning steps
+        "model":         str,            # model ID that ran the loop
+    }
+
+Notes on design choices:
+
+* `create_agent` from `langchain.agents` is the canonical langchain 1.x
+  ReAct factory — it supersedes `create_react_agent`, which was the
+  previous canonical path and is what the Sprint 2 review flagged when
+  we had imported the langgraph.prebuilt copy. Same module, evolved name.
+* Safety runs ahead of the agent loop. Failing safety never reaches the LLM,
+  never spends tokens, never adds to LangSmith noise.
+* The user's message is wrapped via `safety.fence` before becoming a
+  HumanMessage. The system prompt instructs the model to treat fenced
+  content as data, not instructions — defence-in-depth on top of the
+  Mistral moderation gate.
+* LangSmith tracing is enabled implicitly when `LANGCHAIN_TRACING_V2=true`
+  is present in `.env`; LangChain's own instrumentation handles the rest.
+* The checkpointer is the LangGraph singleton from memory.py, keyed by
+  `thread_id = session_id`. Streamlit reruns therefore resume the same
+  conversation rather than starting from scratch.
+"""
+
+from __future__ import annotations
+
+import os
+from typing import Any
+
+from langchain.agents import create_agent
+from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.tools import tool
+
+import config
+import llm_client
+import memory
+import safety
+from logging_config import get_logger
+from prompts.system import build_system_prompt
+from tools.artists import enrich_artist as _enrich_artist_fn
+from tools.events import compare_events as _compare_events_fn
+from tools.events import find_events as _find_events_fn
+from tools.music_kb import explain_music as _explain_music_fn
+from tools.setlist import build_setlist as _build_setlist_fn
+
+logger = get_logger(__name__)
+
+# ── LangSmith wiring ──────────────────────────────────────────────────────────
+# Setting these as environment variables (not just config values) is what
+# LangChain's autoinstrumentation listens for. Done once at import time.
+
+if config.LANGCHAIN_TRACING_V2 and config.LANGSMITH_API_KEY:
+    os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
+    os.environ.setdefault("LANGCHAIN_API_KEY", config.LANGSMITH_API_KEY)
+    os.environ.setdefault("LANGSMITH_API_KEY", config.LANGSMITH_API_KEY)
+    os.environ.setdefault("LANGCHAIN_PROJECT", config.LANGSMITH_PROJECT)
+    os.environ.setdefault("LANGSMITH_PROJECT", config.LANGSMITH_PROJECT)
+    logger.info("langsmith_enabled", project=config.LANGSMITH_PROJECT)
+
+
+# ── Rate limiter (module-level singleton) ─────────────────────────────────────
+# Per-session counts persist for the life of the process. Resetting on
+# restart is acceptable: the security property we care about is per-session.
+
+_rate_limiter = safety.RateLimiter()
+
+
+# ── Tool wrappers ─────────────────────────────────────────────────────────────
+# Each underlying function already carries the docstring that the LLM reads
+# to decide *when* to call the tool — we wrap with @tool to expose the schema
+# to LangChain without rewriting those descriptions.
+
+@tool
+def explain_music(
+    query: str,
+    allowed_doc_types: list[str] | None = None,
+    k: int = 4,
+) -> dict[str, object]:
+    """Retrieve grounded context from the Rave Atlas music knowledge base.
+
+    CALL THIS TOOL when the user asks about:
+    - Electronic music genres: techno, house, psytrance, dubstep, ambient, etc.
+    - BPM ranges, rhythmic signatures, how to recognise a genre by ear
+    - Berlin's electronic music scene, history, venues, culture
+    - Record labels: Tresor, Ostgut Ton, BPitch Control, Innervisions, Klockworks
+    - Artists' genre lineage or background (not real-time tour / release data)
+    - How a dance music track is structured; DJ techniques; the energy arc
+    - Iconic hardware: Roland TR-909, TB-303, and their role in electronic music
+
+    DO NOT call for live events (use find_events), set lists (use build_setlist),
+    or artist tour data (use enrich_artist).
+
+    Args:
+        query: User's question in natural language.
+        allowed_doc_types: Optional allowlist of doc_type values. Valid values:
+            "genre", "history", "labels", "theory". None searches the whole KB.
+        k: Number of chunks to retrieve. Default 4.
+
+    Returns dict with keys: context, sources, grounded (bool).
+    grounded=False means the answer is not in the KB — surface that to the user
+    rather than inventing one.
+    """
+    return _explain_music_fn(query=query, allowed_doc_types=allowed_doc_types, k=k)
+
+
+@tool
+def find_events(
+    date_from: str,
+    date_to: str,
+    filters: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Fetch upcoming Berlin club events from Resident Advisor.
+
+    CALL THIS TOOL when the user asks about live or upcoming Berlin events
+    on specific dates ("this Friday", "tonight", "next weekend"). Translate
+    relative dates to ISO format (YYYY-MM-DD) before calling.
+
+    Args:
+        date_from: Inclusive start date in ISO format (YYYY-MM-DD).
+        date_to:   Inclusive end date in ISO format (YYYY-MM-DD).
+        filters:   Optional dict with any of:
+            "max_price" (float)  — drop events priced above this EUR value
+            "genres"    (list)   — keep only events matching these genre names
+            "venue"     (str)    — partial venue-name match
+            "area"      (str)    — partial Berlin-neighbourhood match
+
+    Returns a list of normalised event dicts; empty list when RA is
+    unreachable or returns nothing. Never invents events.
+    """
+    return _find_events_fn(date_from=date_from, date_to=date_to, filters=filters)
+
+
+@tool
+def compare_events(
+    events: list[dict[str, Any]],
+    taste_profile: dict[str, Any],
+) -> dict[str, Any]:
+    """Rank a list of Berlin events against a user's taste profile.
+
+    CALL THIS TOOL after find_events, when the user asks which event fits
+    them, or which one to choose ("which should I pick", "rank these for
+    me", "what fits my taste").
+
+    Args:
+        events: List of event dicts as returned by find_events. Must not be empty.
+        taste_profile: Taste profile dict; pass {} for a brand-new user.
+
+    Returns: { "ranked_events": [ {rank, event_name, fit_summary, reasoning,
+    tradeoff}, ... ] }. Empty ranked_events on LLM failure rather than raising.
+    """
+    return _compare_events_fn(events=events, taste_profile=taste_profile)
+
+
+@tool
+def enrich_artist(name: str) -> dict[str, Any]:
+    """Fetch labels, genres, and notable releases for a specific artist.
+
+    CALL THIS TOOL when the user wants to understand a specific artist's
+    record labels, genre lineage, recent releases, or background — useful
+    when deciding whether a lineup is worth attending.
+
+    Args:
+        name: Artist name as it would appear on a release (e.g. "Ben Klock",
+              "Aphex Twin", "Âme").
+
+    Returns dict with keys: name, labels, genres, notable_releases,
+    summary_facts, source ("discogs" / "musicbrainz" / "none"). Returns
+    empty lists when the artist is not found — never invents data.
+    """
+    return _enrich_artist_fn(name=name)
+
+
+@tool
+def build_setlist(seed: str, n: int = 8) -> dict[str, Any]:
+    """Generate a Berlin-flavoured set list with energy arc + playable previews.
+
+    CALL THIS TOOL when the user asks for a tracklist, mix idea, warm-up
+    set, closing set, or "build me a set / playlist for X". Pass the user's
+    seed verbatim — do not paraphrase ("hypnotic 2am techno" beats "techno set").
+
+    Args:
+        seed: User's brief — vibe, time of night, venue feel, BPM target.
+        n:    Number of tracks (default 8, clamped to 1-12).
+
+    Returns dict: { title, tracks: [ {artist, title, reason, energy 1-10,
+    preview_url, deezer_url, youtube_url} ], energy_arc }. Empty tracks on
+    LLM failure rather than raising.
+    """
+    return _build_setlist_fn(seed=seed, n=n)
+
+
+_TOOLS = [explain_music, find_events, compare_events, enrich_artist, build_setlist]
+
+
+# ── Tool-trace extraction ─────────────────────────────────────────────────────
+
+_MAX_TOOL_OUTPUT_PREVIEW = 600
+
+
+def _extract_tool_trace(messages: list) -> list[dict[str, Any]]:
+    """
+    Pair each tool call (from an AIMessage) with its result (from the next
+    matching ToolMessage by tool_call_id) so the UI can render a single
+    "trace" panel without re-walking the message list.
+    """
+    trace: list[dict[str, Any]] = []
+    pending: dict[str, dict[str, Any]] = {}
+
+    for msg in messages:
+        if isinstance(msg, AIMessage) and getattr(msg, "tool_calls", None):
+            for call in msg.tool_calls:
+                call_id = call.get("id") or call.get("tool_call_id") or ""
+                pending[call_id] = {
+                    "name": call.get("name", "unknown"),
+                    "args": call.get("args", {}),
+                    "output_preview": "",
+                }
+        elif isinstance(msg, ToolMessage):
+            call_id = getattr(msg, "tool_call_id", "") or ""
+            content = msg.content if isinstance(msg.content, str) else str(msg.content)
+            entry = pending.pop(call_id, None)
+            if entry is None:
+                entry = {"name": getattr(msg, "name", "unknown"), "args": {}, "output_preview": ""}
+            entry["output_preview"] = content[:_MAX_TOOL_OUTPUT_PREVIEW] + (
+                "…" if len(content) > _MAX_TOOL_OUTPUT_PREVIEW else ""
+            )
+            trace.append(entry)
+
+    # Any tool calls that never got a response (loop bailed mid-call)
+    for entry in pending.values():
+        entry["output_preview"] = "(no tool response captured)"
+        trace.append(entry)
+
+    return trace
+
+
+def _aggregate_usage(messages: list, model_id: str) -> tuple[dict[str, int], float]:
+    """
+    Sum prompt/completion/total tokens across every AIMessage in the run,
+    and estimate the dollar cost using config.MODEL_PRICES.
+    """
+    totals = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    for msg in messages:
+        if not isinstance(msg, AIMessage):
+            continue
+        meta = getattr(msg, "usage_metadata", None) or {}
+        totals["prompt_tokens"] += int(meta.get("input_tokens", 0))
+        totals["completion_tokens"] += int(meta.get("output_tokens", 0))
+        totals["total_tokens"] += int(meta.get("total_tokens", 0))
+
+    price_in, price_out = config.MODEL_PRICES.get(model_id, (0.0, 0.0))
+    cost = (
+        (totals["prompt_tokens"] / 1000) * price_in
+        + (totals["completion_tokens"] / 1000) * price_out
+    )
+    return totals, round(cost, 6)
+
+
+# ── Public entrypoint ─────────────────────────────────────────────────────────
+
+def run_agent(
+    message: str,
+    session_id: str,
+    model_id: str | None = None,
+    tone: str = "friendly",
+    temperature: float = 0.7,
+) -> dict[str, Any]:
+    """
+    Run a single user turn through the Rave Atlas ReAct agent.
+
+    Order of operations:
+      1. validate_input  — length, duplicates, structural sanity
+      2. rate-limit      — rolling window per session
+      3. moderate        — Mistral classifier, score-gated
+      4. fence user msg  — defence-in-depth on top of moderation
+      5. load profile    — inject into system prompt
+      6. invoke agent    — checkpointer keyed by session_id
+      7. aggregate       — pull text, tool trace, tokens, cost out of state
+
+    Any failure in steps 1-3 short-circuits with blocked=True and a
+    user-safe reason. No tokens are spent on blocked turns.
+    """
+    model_id = model_id or config.DEFAULT_MODEL
+
+    # ── 1. structural validation ──────────────────────────────────────────────
+    ok, reason = safety.validate_input(message, session_id=session_id)
+    if not ok:
+        logger.info("agent_blocked_validation", session_id=session_id, reason=reason)
+        return _blocked(model_id, reason)
+
+    # ── 2. rate limiter ───────────────────────────────────────────────────────
+    allowed, reason = _rate_limiter.allow(session_id)
+    if not allowed:
+        logger.info("agent_blocked_rate_limit", session_id=session_id)
+        return _blocked(model_id, reason)
+
+    # ── 3. content moderation ─────────────────────────────────────────────────
+    moderation_ok, _scores = safety.moderate(message)
+    if not moderation_ok:
+        logger.info("agent_blocked_moderation", session_id=session_id)
+        return _blocked(
+            model_id,
+            "Your message was flagged by the content classifier. "
+            "Please rephrase it as a question about Berlin's music scene.",
+        )
+
+    # ── 4. assemble the run ───────────────────────────────────────────────────
+    profile = memory.load_profile(session_id)
+    system_prompt = build_system_prompt(tone=tone, taste_profile=profile)
+    fenced_message = safety.fence("USER_INPUT", message)
+    chat_model = llm_client.get_chat_model(model_id=model_id, temperature=temperature)
+    checkpointer = memory.get_checkpointer()
+
+    agent = create_agent(
+        model=chat_model,
+        tools=_TOOLS,
+        system_prompt=system_prompt,
+        checkpointer=checkpointer,
+    )
+
+    # ── 5. invoke ─────────────────────────────────────────────────────────────
+    try:
+        result = agent.invoke(
+            {"messages": [{"role": "user", "content": fenced_message}]},
+            config={"configurable": {"thread_id": session_id}},
+        )
+    except Exception as exc:
+        logger.error("agent_invoke_failed", error=str(exc)[:200], session_id=session_id)
+        return _blocked(
+            model_id,
+            "The agent encountered an error mid-run. Please try again — "
+            "if it keeps happening, switch to a different model from the sidebar.",
+        )
+
+    messages = result.get("messages", []) if isinstance(result, dict) else []
+
+    # Final assistant reply is the last AIMessage with non-empty text content
+    final_text = ""
+    for msg in reversed(messages):
+        if isinstance(msg, AIMessage):
+            content = msg.content
+            if isinstance(content, str) and content.strip():
+                final_text = content
+                break
+            if isinstance(content, list):
+                parts = [p.get("text", "") for p in content if isinstance(p, dict)]
+                joined = "".join(parts).strip()
+                if joined:
+                    final_text = joined
+                    break
+
+    if not final_text:
+        final_text = (
+            "I could not produce a response for that turn — please try rephrasing."
+        )
+
+    tool_trace = _extract_tool_trace(messages)
+    usage, cost = _aggregate_usage(messages, model_id)
+
+    logger.info(
+        "agent_run_complete",
+        session_id=session_id,
+        model=model_id,
+        n_tool_calls=len(tool_trace),
+        total_tokens=usage["total_tokens"],
+        cost_usd=cost,
+    )
+
+    return {
+        "text": final_text,
+        "blocked": False,
+        "block_reason": "",
+        "tool_calls": tool_trace,
+        "usage": usage,
+        "cost_estimate": cost,
+        "model": model_id,
+    }
+
+
+def _blocked(model_id: str, reason: str) -> dict[str, Any]:
+    """Standard shape returned when a safety gate refuses the turn."""
+    return {
+        "text": reason,
+        "blocked": True,
+        "block_reason": reason,
+        "tool_calls": [],
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        "cost_estimate": 0.0,
+        "model": model_id,
+    }
+
+
+# ── Smoke test ────────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    import sys
+    import time
+    import uuid
+
+    # Windows cp1252 stdout chokes on box-drawing / em-dashes that the
+    # structlog output (and our test banners) emit. Force UTF-8 so the
+    # smoke-test output is readable on any platform.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+    except (AttributeError, OSError):
+        pass
+
+    SESSION = f"smoke-{uuid.uuid4().hex[:8]}"
+
+    print("=" * 60)
+    print("Test 1: empty message blocked at validation")
+    print("=" * 60)
+    r = run_agent("", SESSION)
+    print(f"  blocked      : {r['blocked']}")
+    print(f"  reason       : {r['block_reason']}")
+    print(f"  usage tokens : {r['usage']['total_tokens']}")
+    assert r["blocked"] is True, "FAIL: empty message must be blocked"
+    assert r["usage"]["total_tokens"] == 0, "FAIL: blocked turn must spend zero tokens"
+    print("  OK -validation gate caught it, no tokens spent")
+
+    print()
+    print("=" * 60)
+    print("Test 2: 5000-char message blocked at validation")
+    print("=" * 60)
+    r = run_agent("a" * 5000, SESSION)
+    print(f"  blocked : {r['blocked']}")
+    print(f"  reason  : {r['block_reason'][:80]}")
+    assert r["blocked"] is True, "FAIL: 5000-char message must be blocked"
+    print("  OK -length cap enforced")
+
+    print()
+    print("=" * 60)
+    print("Test 3: legitimate KB question - full agent run")
+    print("=" * 60)
+    # Use Haiku for the live test: cheapest of the curated list, and
+    # least often blocked by OpenRouter's data-policy guardrails.
+    t0 = time.monotonic()
+    r = run_agent(
+        "In two sentences: what makes Berlin techno sound different from Detroit techno?",
+        SESSION,
+        model_id="anthropic/claude-haiku-4.5",
+    )
+    elapsed = time.monotonic() - t0
+    print(f"  blocked      : {r['blocked']}")
+    print(f"  model        : {r['model']}")
+    print(f"  latency_s    : {elapsed:.1f}")
+    print(f"  total_tokens : {r['usage']['total_tokens']}")
+    print(f"  cost_usd     : ${r['cost_estimate']}")
+    print(f"  n_tool_calls : {len(r['tool_calls'])}")
+    for i, call in enumerate(r["tool_calls"], 1):
+        print(f"    [{i}] {call['name']}  args={list(call['args'].keys())}")
+        preview = call["output_preview"][:120].replace("\n", " ")
+        print(f"        output: {preview}...")
+    print()
+    print("  -- assistant --")
+    print(f"  {r['text']}")
+    print()
+    assert r["blocked"] is False, (
+        f"FAIL: legitimate question should not be blocked. reason: {r['block_reason']}"
+    )
+    assert len(r["text"]) > 20, "FAIL: expected a substantive answer"
+    assert r["usage"]["total_tokens"] > 0, "FAIL: real run should consume tokens"
+    print("  OK - agent answered with substance")
+
+    print()
+    print("=" * 60)
+    print("Test 4: duplicate-message guard (same text, same session)")
+    print("=" * 60)
+    dup_text = "What labels does Ben Klock record on?"
+    run_agent(dup_text, SESSION)  # first time — should pass
+    r = run_agent(dup_text, SESSION)  # second identical — should block
+    print(f"  blocked : {r['blocked']}")
+    print(f"  reason  : {r['block_reason']}")
+    assert r["blocked"] is True, "FAIL: duplicate message must be blocked"
+    print("  OK -duplicate guard active")
+
+    print()
+    print("=" * 60)
+    print("Test 5: return-shape contract")
+    print("=" * 60)
+    expected_keys = {
+        "text", "blocked", "block_reason", "tool_calls",
+        "usage", "cost_estimate", "model",
+    }
+    assert set(r.keys()) == expected_keys, (
+        f"FAIL: return-shape drift — got {set(r.keys())}, expected {expected_keys}"
+    )
+    assert set(r["usage"].keys()) == {"prompt_tokens", "completion_tokens", "total_tokens"}, (
+        "FAIL: usage shape drift"
+    )
+    print(f"  keys present : {sorted(expected_keys)}")
+    print("  OK -UI contract intact")
+
+    print()
+    print("All assertions passed.")
