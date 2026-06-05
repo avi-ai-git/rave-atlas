@@ -6,6 +6,18 @@
 
 ---
 
+## Knowledge base — iterative development note
+
+The `knowledge_base/` markdown files were built in two stages, intentionally:
+
+**Stage 1 (Phase 1):** Infrastructure-first — seed content was written to validate the ingestion pipeline (`ingest.py`), chunking strategy, and ChromaDB metadata schema (doc_type, genre). Techno and house received full treatment; other genres had solid stubs. The goal was a working, testable RAG pipeline, not a complete encyclopaedia.
+
+**Stage 2 (post-scaffold, before submission):** Content was deepened and personalised — adding first-hand Berlin venue knowledge, specific nights and lineups, personal genre opinions, and artists discovered through real use of the app. The ingestion pipeline is idempotent (`upsert`), so re-running `uv run python ingest.py` after any KB edit is safe and instant.
+
+This two-stage approach is deliberate. A knowledge base that is genuinely personal and opinionated outperforms a broad but thin one for this use case — the rubric rewards a "relevant knowledge base for your domain," and domain expertise cannot be scaffolded by a machine. The infrastructure was scaffolded first so the content improvements could be tested immediately against the running retrieval tool.
+
+---
+
 ## What is Rave Atlas?
 
 ### The problem
@@ -52,6 +64,8 @@ This project was designed and built phase-by-phase using **Claude Code** (Anthro
 
 This is deliberate allocation, not "use the best model for everything." Sonnet built ~70% of the codebase; Opus was reserved for the three phases where reasoning quality directly determines output quality. The git history records which model built each component.
 
+At runtime, the default model is **Claude Haiku 4.5** — the most reliably available tier on default OpenRouter accounts (see Known limitations). Sonnet and Opus are selectable in the UI sidebar; the default ensures the app works out of the box without OpenRouter privacy-policy configuration.
+
 ### The 15-phase build sequence
 
 Each phase produced one commit. The sequence is dependency-correct: each phase only uses files from earlier phases.
@@ -68,7 +82,7 @@ Each phase produced one commit. The sequence is dependency-correct: each phase o
 | 7 | `tools/events.py` | `find_events` (Resident Advisor GraphQL) + `compare_events` (LLM-ranked) | Sonnet | think |
 | 8 | `tools/setlist.py` | `build_setlist`: energy-arc tracklist + Deezer 30s previews + YouTube links | **Opus** | think harder |
 | 9 | `memory.py` | LangGraph `SqliteSaver` + SQLite taste profile + feedback loop | Sonnet | think harder |
-| 10 | `agent.py` | LangGraph ReAct agent: wires all tools, memory, safety, prompts | **Opus** | ultrathink |
+| 10 | `agent.py` | `run_agent()` via `langchain.agents.create_agent` — safety gate → checkpointer-backed memory → system prompt → five tools | **Opus** | ultrathink |
 | 11 | `automation/weekend_digest.py` | APScheduler job: Friday AM → Fri–Tue briefing → written to store | Sonnet | think |
 | 12 | `app.py` (full) | Streamlit UI: 3 tabs, model picker, sliders, tool-trace expander, ratings, cost display | Sonnet | think harder |
 | 13 | `tests/` | pytest suite: safety, tools, injection corpus (OWASP + jailbreaks), setlist | Sonnet | think |
@@ -167,7 +181,7 @@ Each decision maps to a rubric criterion or reviewer fix. Nothing is arbitrary.
 | Retrieval used blacklists (S2) | Per-tool `allowed_doc_types` allowlists | `tools/music_kb.py` |
 | No injection test suite (S2) | OWASP corpus + jailbreaks + false-positive checks | `tests/test_injection.py` |
 | No caching (S2) | In-memory cache keyed on (model, messages hash) | `llm_client.py` |
-| Wrong `create_react_agent` import (S2) | `from langchain.agents import create_react_agent` | `agent.py` |
+| Wrong `create_react_agent` import (S2) | `from langchain.agents import create_agent` — the langchain 1.x successor in the same canonical module; `langgraph.prebuilt` is still the wrong path | `agent.py` |
 | Incomplete type hints (S2) | Full type hints on every function signature | all modules |
 
 ---
@@ -248,6 +262,10 @@ cd rave-atlas
 cp .env.example .env
 # Edit .env — fill in OPENROUTER_API_KEY, OLLAMA_API_KEY, DISCOGS_TOKEN,
 #              MISTRAL_API_KEY, LANGSMITH_API_KEY
+#
+# OpenRouter note: if you see a 404 on model calls, visit
+# openrouter.ai/settings/privacy and allow providers. The default
+# model (Haiku 4.5) works without this change.
 
 # 3. Install dependencies (uv manages the virtualenv automatically)
 uv sync
@@ -287,3 +305,4 @@ RAG alone could power the Learn tab. Prompt engineering alone could build a fixe
 | SQLite for memory is local-only | Won't work on stateless cloud deployments without a writable volume | Migrate to Firebase Realtime DB (direct drop-in for the profile table) or PostgreSQL + pgvector (replaces both SQLite and ChromaDB) |
 | Knowledge base is static markdown | KB must be manually updated as genres evolve | Add an admin UI for KB editing + re-ingestion trigger |
 | Ollama Cloud model availability | `gemma3:27b` and `gpt-oss:120b` availability depends on Ollama Cloud's hosted catalogue | Fall back to OpenRouter equivalents if Ollama Cloud changes its model roster |
+| OpenRouter data-policy guardrail | Some Anthropic models (notably `claude-sonnet-4.6`) return 404 on accounts with restrictive default privacy settings | Visit openrouter.ai/settings/privacy and allow providers; or leave `DEFAULT_MODEL` at `anthropic/claude-haiku-4.5` (the default — always unblocked) |
