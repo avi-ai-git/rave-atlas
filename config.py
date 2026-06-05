@@ -56,6 +56,11 @@ AVAILABLE_MODELS: list[dict[str, str]] = [
         "provider": "openrouter",
     },
     {
+        "id": "openai/gpt-5",
+        "name": "GPT-5 (OpenAI via OpenRouter)",
+        "provider": "openrouter",
+    },
+    {
         "id": "gemma3:27b",
         "name": "Gemma 3 27B (open-source)",
         "provider": "ollama",
@@ -77,6 +82,7 @@ MODEL_PRICES: dict[str, tuple[float, float]] = {
     "anthropic/claude-sonnet-4.6":  (0.003,   0.015),
     "anthropic/claude-haiku-4.5":   (0.00025, 0.00125),
     "anthropic/claude-opus-4.7":    (0.015,   0.075),
+    "openai/gpt-5":                 (0.015,   0.060),
     "gemma3:27b":                   (0.0,     0.0),
     "gpt-oss:120b":                 (0.0,     0.0),
 }
