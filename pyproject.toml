@@ -1,0 +1,27 @@
+[project]
+name = "rave-atlas"
+version = "0.1.0"
+description = "An AI agent for Berlin's electronic music scene — weekend concierge, music education, and set-list builder."
+requires-python = ">=3.11"
+dependencies = [
+    "streamlit>=1.40.0",
+    "langgraph>=0.2.0",
+    "langchain>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "langchain-community>=0.3.0",
+    "langsmith>=0.1.0",
+    "chromadb>=0.5.18",
+    "sentence-transformers>=3.0.0",
+    "structlog>=24.4.0",
+    "requests>=2.32.0",
+    "python-dotenv>=1.0.0",
+    "apscheduler>=3.10.0",
+    "openai>=1.50.0",
+    "mistralai>=1.0.0",
+    "pytest>=8.3.0",
+    "pytest-mock>=3.14.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
