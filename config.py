@@ -41,17 +41,17 @@ OLLAMA_BASE_URL: str = os.environ.get("OLLAMA_BASE_URL", "https://ollama.com/v1"
 
 AVAILABLE_MODELS: list[dict[str, str]] = [
     {
-        "id": "anthropic/claude-sonnet-4-6",
+        "id": "anthropic/claude-sonnet-4.6",
         "name": "Claude Sonnet 4.6",
         "provider": "openrouter",
     },
     {
-        "id": "anthropic/claude-haiku-4-5-20251001",
+        "id": "anthropic/claude-haiku-4.5",
         "name": "Claude Haiku 4.5 (fast)",
         "provider": "openrouter",
     },
     {
-        "id": "anthropic/claude-opus-4-7",
+        "id": "anthropic/claude-opus-4.7",
         "name": "Claude Opus 4.7 (quality)",
         "provider": "openrouter",
     },
@@ -68,17 +68,17 @@ AVAILABLE_MODELS: list[dict[str, str]] = [
 ]
 
 DEFAULT_MODEL: str = os.environ.get(
-    "DEFAULT_MODEL", "anthropic/claude-sonnet-4-6"
+    "DEFAULT_MODEL", "anthropic/claude-sonnet-4.6"
 )
 
 # Per-model price table: (prompt $/1k tokens, completion $/1k tokens).
 # Kept here so llm_client.py can estimate cost without hard-coding prices in logic.
 MODEL_PRICES: dict[str, tuple[float, float]] = {
-    "anthropic/claude-sonnet-4-6":         (0.003,   0.015),
-    "anthropic/claude-haiku-4-5-20251001":  (0.00025, 0.00125),
-    "anthropic/claude-opus-4-7":            (0.015,   0.075),
-    "gemma3:27b":                           (0.0,     0.0),
-    "gpt-oss:120b":                         (0.0,     0.0),
+    "anthropic/claude-sonnet-4.6":  (0.003,   0.015),
+    "anthropic/claude-haiku-4.5":   (0.00025, 0.00125),
+    "anthropic/claude-opus-4.7":    (0.015,   0.075),
+    "gemma3:27b":                   (0.0,     0.0),
+    "gpt-oss:120b":                 (0.0,     0.0),
 }
 
 # ── External APIs ─────────────────────────────────────────────────────────────
