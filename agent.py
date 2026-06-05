@@ -463,13 +463,12 @@ if __name__ == "__main__":
     print("=" * 60)
     print("Test 3: legitimate KB question - full agent run")
     print("=" * 60)
-    # Use Haiku for the live test: cheapest of the curated list, and
-    # least often blocked by OpenRouter's data-policy guardrails.
+    # Uses config.DEFAULT_MODEL (Haiku 4.5) — kept explicit so a misconfigured
+    # .env override surfaces here rather than half-way through a UI session.
     t0 = time.monotonic()
     r = run_agent(
         "In two sentences: what makes Berlin techno sound different from Detroit techno?",
         SESSION,
-        model_id="anthropic/claude-haiku-4.5",
     )
     elapsed = time.monotonic() - t0
     print(f"  blocked      : {r['blocked']}")

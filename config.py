@@ -72,8 +72,12 @@ AVAILABLE_MODELS: list[dict[str, str]] = [
     },
 ]
 
+# Default to Haiku 4.5: cheapest tier, fastest, and the model that reliably
+# passes OpenRouter's data-policy guardrails on a default account. Sonnet
+# and Opus stay in AVAILABLE_MODELS as picker options; users with a
+# whitelisted OpenRouter privacy policy can override via DEFAULT_MODEL in .env.
 DEFAULT_MODEL: str = os.environ.get(
-    "DEFAULT_MODEL", "anthropic/claude-sonnet-4.6"
+    "DEFAULT_MODEL", "anthropic/claude-haiku-4.5"
 )
 
 # Per-model price table: (prompt $/1k tokens, completion $/1k tokens).
