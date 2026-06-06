@@ -63,19 +63,44 @@ def _youtube_search_url(artist: str, title: str) -> str:
     return f"https://www.youtube.com/results?search_query={urllib.parse.quote_plus(query)}"
 
 
-def _deezer_search(query: str) -> dict[str, Any] | None:
+# Titles too generic to search: Deezer will return any track, usually wrong.
+_GENERIC_TITLES = frozenset({
+    "untitled", "unknown", "n/a", "na", "track", "no title", "notitle",
+    "unnamed", "demo", "instrumental",
+})
+
+
+def _artist_matches(requested: str, returned: str) -> bool:
+    """Loose artist name comparison: lowercase, strip punctuation, check overlap."""
+    def _normalise(s: str) -> str:
+        return re.sub(r"[^a-z0-9 ]", "", s.lower()).strip()
+
+    req = _normalise(requested)
+    ret = _normalise(returned)
+    if not req or not ret:
+        return False
+    # Accept if either name is a substring of the other, or they share a word.
+    if req in ret or ret in req:
+        return True
+    req_words = set(req.split())
+    ret_words = set(ret.split())
+    return bool(req_words & ret_words)
+
+
+def _deezer_search(query: str, limit: int = 5) -> list[dict[str, Any]]:
     """
-    Search Deezer for a track. Returns the top hit dict or None.
+    Search Deezer for a track. Returns up to `limit` hits (empty list on failure).
     Cached in-memory by normalised query.
     """
     key = query.strip().lower()
     if key in _DEEZER_CACHE:
-        return _DEEZER_CACHE[key]
+        cached = _DEEZER_CACHE[key]
+        return cached if cached is not None else []
 
     try:
         resp = requests.get(
             f"{_DEEZER_BASE}/search",
-            params={"q": query, "limit": 1},
+            params={"q": query, "limit": limit},
             timeout=_HTTP_TIMEOUT,
         )
         resp.raise_for_status()
@@ -83,12 +108,11 @@ def _deezer_search(query: str) -> dict[str, Any] | None:
     except (requests.RequestException, ValueError) as exc:
         logger.warning("deezer_search_failed", query=query[:80], error=str(exc))
         _DEEZER_CACHE[key] = None
-        return None
+        return []
 
     hits = body.get("data") or []
-    result = hits[0] if hits else None
-    _DEEZER_CACHE[key] = result
-    return result
+    _DEEZER_CACHE[key] = hits
+    return hits
 
 
 def _enrich_track_with_deezer(
@@ -98,34 +122,49 @@ def _enrich_track_with_deezer(
     Return {preview_url, deezer_url, deezer_fallback} for an artist+title pair.
 
     Strategy:
-      1. Try the exact "{artist} {title}" query.
-      2. If no hit (which happens when the LLM invented a plausible-but-fake
-         title), fall back to searching by artist alone, the user still
-         gets a real 30s sample of that artist's actual sound.
+      1. Skip exact search for generic titles ("Untitled", "Unknown", etc.) --
+         Deezer returns whatever matches the title, almost never the right track.
+      2. For real titles, search "{artist} {title}" and pick the first hit whose
+         artist name matches the requested artist. If no artist-verified hit
+         exists, treat as a miss.
+      3. Fall back to artist-only search so the user still gets a real 30s
+         sample of that artist's actual sound.
 
-    deezer_fallback is True when the artist-only fallback was used, so the UI
-    can label the preview clearly ("similar track by {artist}") instead of
-    implying it is the exact track.
+    deezer_fallback is True when step 3 was used, so the UI can label the
+    preview "similar track by {artist}" instead of implying it is the exact track.
     """
-    hit = _deezer_search(f"{artist} {title}")
-    if hit:
+    title_key = re.sub(r"[^a-z0-9]", "", title.lower())
+    skip_exact = title_key in _GENERIC_TITLES or not title_key
+
+    if not skip_exact:
+        hits = _deezer_search(f"{artist} {title}")
+        for hit in hits:
+            returned_artist = (hit.get("artist") or {}).get("name", "")
+            if _artist_matches(artist, returned_artist):
+                return {
+                    "preview_url": hit.get("preview") or None,
+                    "deezer_url": hit.get("link") or None,
+                    "deezer_fallback": False,
+                }
+        # No artist-verified hit -- log and fall through
+        if hits:
+            logger.info(
+                "deezer_artist_mismatch",
+                requested=artist[:40],
+                returned=(hits[0].get("artist") or {}).get("name", "")[:40],
+            )
+
+    time.sleep(_DEEZER_PAUSE_SECONDS)
+    artist_hits = _deezer_search(artist)
+    if artist_hits:
+        hit = artist_hits[0]
         return {
             "preview_url": hit.get("preview") or None,
             "deezer_url": hit.get("link") or None,
-            "deezer_fallback": False,
+            "deezer_fallback": True,
         }
 
-    time.sleep(_DEEZER_PAUSE_SECONDS)
-    hit = _deezer_search(artist)
-
-    if not hit:
-        return {"preview_url": None, "deezer_url": None, "deezer_fallback": False}
-
-    return {
-        "preview_url": hit.get("preview") or None,
-        "deezer_url": hit.get("link") or None,
-        "deezer_fallback": True,
-    }
+    return {"preview_url": None, "deezer_url": None, "deezer_fallback": False}
 
 
 def _parse_llm_setlist_json(raw_text: str) -> dict[str, Any] | None:
