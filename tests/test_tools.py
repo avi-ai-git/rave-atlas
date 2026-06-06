@@ -128,7 +128,7 @@ class TestEnrichArtist:
             _make_get_mock({"name": "Ben Klock", "profile": "Ben Klock is a Berlin DJ. He records on Klockworks."}),
             _make_get_mock({"releases": [
                 {"title": "Subzero", "year": 2009, "label": "Klockworks"},
-                {"title": "One",     "year": 2012, "label": "Klockworks"},
+                {"title": "One", "year": 2012, "label": "Klockworks"},
             ]}),
             _make_get_mock({"results": [{"genre": ["Electronic"], "style": ["Techno", "Minimal Techno"]}]}),
         ]
@@ -148,9 +148,9 @@ class TestEnrichArtist:
         mocker.patch.object(artists_mod, "DISCOGS_TOKEN", "fake-token")
         mocker.patch("time.sleep")
         mocker.patch("requests.get", side_effect=[
-            _make_get_mock({"results": []}),                                    # discogs search: miss
-            _make_get_mock({"artists": [{"id": "mbid-001", "score": 95}]}),    # MB search
-            _make_get_mock({                                                     # MB detail
+            _make_get_mock({"results": []}), # discogs search: miss
+            _make_get_mock({"artists": [{"id": "mbid-001", "score": 95}]}), # MB search
+            _make_get_mock({ # MB detail
                 "name": "Ben Klock",
                 "tags": [{"name": "techno", "count": 10}],
                 "release-groups": [{"title": "One", "first-release-date": "2012"}],
@@ -165,8 +165,8 @@ class TestEnrichArtist:
         mocker.patch.object(artists_mod, "DISCOGS_TOKEN", "fake-token")
         mocker.patch("time.sleep")
         mocker.patch("requests.get", side_effect=[
-            _make_get_mock({"results": []}),    # discogs miss
-            _make_get_mock({"artists": []}),    # MB miss
+            _make_get_mock({"results": []}), # discogs miss
+            _make_get_mock({"artists": []}), # MB miss
         ])
         result = artists_mod.enrich_artist("ZZZNOBODYTHISARTISTDOESNOTEXIST999")
         assert result["labels"] == []
@@ -233,10 +233,11 @@ def _ra_row(
         "event": {
             "id": "1",
             "title": title,
-            "date": "2024-01-05",
-            "startTime": "23:00",
+            "date": "2024-01-05T00:00:00.000",
+            "startTime": "2024-01-05T23:00:00.000",
+            "endTime": "2024-01-06T06:00:00.000",
             "contentUrl": "/events/1",
-            "venue": {"name": venue, "area": {"name": area}},
+            "venue": {"name": venue, "address": "Köpenicker Str. 70, 10179 Berlin", "area": {"name": area}},
             "artists": [{"name": a} for a in (artists or ["DJ Test"])],
             "cost": price,
             "genres": [{"name": g} for g in (genres or ["Techno"])],
@@ -253,6 +254,12 @@ class TestFindEvents:
         assert events[0]["venue"] == "Tresor"
         assert events[0]["price"] == "€15"
         assert "Techno" in events[0]["genres"]
+        # RA timestamps are parsed to clean, human-readable fields rather than
+        # leaking the raw "...T23:00:00.000" datetime into the UI.
+        assert events[0]["start_time"] == "23:00"
+        assert events[0]["time_label"] == "23:00 to 06:00"
+        assert events[0]["date_label"] == "Fri 5 Jan"
+        assert events[0]["address"] # registry address for Tresor, or RA's
 
     def test_max_price_filter_excludes_expensive_events(self, mocker):
         mocker.patch("requests.post", return_value=_ra_response([
@@ -266,7 +273,7 @@ class TestFindEvents:
     def test_genre_filter_keeps_matching_only(self, mocker):
         mocker.patch("requests.post", return_value=_ra_response([
             _ra_row(title="Techno Night", genres=["Techno"]),
-            _ra_row(title="House Night",  genres=["House"]),
+            _ra_row(title="House Night", genres=["House"]),
         ]))
         events = events_mod.find_events("2024-01-05", "2024-01-07", filters={"genres": ["Techno"]})
         assert len(events) == 1
@@ -274,7 +281,7 @@ class TestFindEvents:
 
     def test_venue_filter_partial_case_insensitive_match(self, mocker):
         mocker.patch("requests.post", return_value=_ra_response([
-            _ra_row(title="At Tresor",   venue="Tresor"),
+            _ra_row(title="At Tresor", venue="Tresor"),
             _ra_row(title="At Berghain", venue="Berghain"),
         ]))
         events = events_mod.find_events("2024-01-05", "2024-01-07", filters={"venue": "tresor"})
@@ -283,7 +290,7 @@ class TestFindEvents:
 
     def test_area_filter_partial_match(self, mocker):
         mocker.patch("requests.post", return_value=_ra_response([
-            _ra_row(title="In Mitte",     area="Mitte"),
+            _ra_row(title="In Mitte", area="Mitte"),
             _ra_row(title="In Kreuzberg", area="Kreuzberg"),
         ]))
         events = events_mod.find_events("2024-01-05", "2024-01-07", filters={"area": "kreuzberg"})
@@ -346,7 +353,7 @@ class TestResolveAreaId:
     def test_seeded_city_returns_without_network(self, mocker):
         post = mocker.patch("requests.post")
         assert events_mod.resolve_area_id("Berlin") == 34
-        assert events_mod.resolve_area_id("berlin") == 34  # case-insensitive
+        assert events_mod.resolve_area_id("berlin") == 34 # case-insensitive
         post.assert_not_called()
 
     def test_resolves_new_city_via_areas_query_and_caches(self, mocker):
@@ -369,8 +376,8 @@ class TestResolveAreaId:
         assert events_mod.resolve_area_id("Someplace-Unique-456") is None
 
     def test_find_events_returns_empty_for_unresolvable_city(self, mocker):
-        """No silent Berlin fallback — an uncovered city yields [] and no events query."""
+        """No silent Berlin fallback, an uncovered city yields [] and no events query."""
         post = mocker.patch("requests.post", return_value=_ra_areas_response([]))
         events = events_mod.find_events("2024-01-05", "2024-01-07", city="Tinytown-Unique-789")
         assert events == []
-        assert post.call_count == 1  # only the areas() resolve, no events query
+        assert post.call_count == 1 # only the areas() resolve, no events query

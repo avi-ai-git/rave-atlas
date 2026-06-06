@@ -1,27 +1,27 @@
 """
-Rave Atlas — find_events + compare_events tools.
+Rave Atlas, find_events + compare_events tools.
 
 find_events: queries Resident Advisor's unofficial GraphQL endpoint for
 upcoming club events in a given city. The city is resolved to an RA area ID
 at runtime via RA's own areas(searchTerm) query (cached in-process), so the
 tool genuinely queries the requested city rather than silently defaulting to
-Berlin. Returns a normalised list — empty on any API failure or when the city
+Berlin. Returns a normalised list, empty on any API failure or when the city
 is not covered by RA. Never invents events.
 
 compare_events: takes a list of events and a taste profile, calls the LLM
-with the COMPARE_PROMPT reasoning rubric, and returns them ranked with
+with the COMPARE_PROMPT reasoning guide, and returns them ranked with
 plain-language explanations. Falls back to an empty ranked list on LLM
 or JSON-parse failure rather than raising.
 
 RA schema notes (confirmed via live introspection, June 2026):
-  - events query: eventListings  (not listing — that query errors downstream)
-  - filter type:  FilterInputDtoInput  (single DTO, not [FilterInput] array)
-  - response:     data { event { ... } }  (not data { ... on Event { ... } })
-  - areas query:  areas(searchTerm: "berlin", limit: 3) { id name country { name } }
-  - Berlin area ID: 34  (seeded — the app's home city; others resolved live)
+  - events query: eventListings (not listing, that query errors downstream)
+  - filter type: FilterInputDtoInput (single DTO, not [FilterInput] array)
+  - response: data { event { ... } } (not data { ... on Event { ... } })
+  - areas query: areas(searchTerm: "berlin", limit: 3) { id name country { name } }
+  - Berlin area ID: 34 (seeded, the app's home city; others resolved live)
 
 Multi-city note: RA covers major scenes well (Berlin, Hamburg, Cologne,
-Amsterdam, London, Paris). Coverage for small towns is sparse-to-empty — the
+Amsterdam, London, Paris). Coverage for small towns is sparse-to-empty, the
 tool returns [] honestly rather than faking results. See config.AVAILABLE_CITIES.
 """
 
@@ -35,6 +35,7 @@ import requests
 
 import config
 import llm_client
+import textfmt
 from logging_config import get_logger
 from prompts.compare import build_compare_prompt
 
@@ -49,7 +50,7 @@ _RA_URL = "https://ra.co/graphql"
 _AREA_ID_CACHE: dict[str, int] = {"berlin": 34}
 
 # Extended area metadata: keyed by lower-cased city name, includes area ID
-# and the country name as returned by RA's areas query.  Populated lazily
+# and the country name as returned by RA's areas query. Populated lazily
 # alongside _AREA_ID_CACHE; used to resolve the correct currency code.
 _AREA_META_CACHE: dict[str, dict[str, object]] = {
     "berlin": {"id": 34, "country": "Germany"},
@@ -58,21 +59,21 @@ _AREA_META_CACHE: dict[str, dict[str, object]] = {
 # European non-euro currencies keyed by country name (as RA returns them).
 # All other European countries use EUR; this table lists the exceptions.
 _COUNTRY_CURRENCY: dict[str, str] = {
-    "Denmark":        "DKK",
-    "Sweden":         "SEK",
-    "Norway":         "NOK",
-    "Switzerland":    "CHF",
-    "Liechtenstein":  "CHF",
+    "Denmark": "DKK",
+    "Sweden": "SEK",
+    "Norway": "NOK",
+    "Switzerland": "CHF",
+    "Liechtenstein": "CHF",
     "Czech Republic": "CZK",
-    "Czechia":        "CZK",
-    "Poland":         "PLN",
-    "Hungary":        "HUF",
-    "Romania":        "RON",
-    "Serbia":         "RSD",
-    "Turkey":         "TRY",
-    "Iceland":        "ISK",
-    "Bulgaria":       "BGN",
-    "Croatia":        "EUR",   # adopted EUR 2023
+    "Czechia": "CZK",
+    "Poland": "PLN",
+    "Hungary": "HUF",
+    "Romania": "RON",
+    "Serbia": "RSD",
+    "Turkey": "TRY",
+    "Iceland": "ISK",
+    "Bulgaria": "BGN",
+    "Croatia": "EUR", # adopted EUR 2023
 }
 
 _RA_EVENTS_QUERY = """
@@ -92,9 +93,11 @@ query GET_EVENTS(
         title
         date
         startTime
+        endTime
         contentUrl
         venue {
           name
+          address
           area {
             name
           }
@@ -147,7 +150,7 @@ def resolve_area_id(city: str) -> int | None:
 
     Checks the in-process cache first (seeded with Berlin=34), then falls back
     to RA's own areas(searchTerm) query and caches the result. Returns None when
-    RA is unreachable or has no area matching the name — the caller treats that
+    RA is unreachable or has no area matching the name, the caller treats that
     as "no coverage" and returns an empty event list rather than guessing.
 
     Args:
@@ -202,6 +205,92 @@ def resolve_area_id(city: str) -> int | None:
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
+_WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+_MONTH_NAMES = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def _fmt_clock(iso_datetime: str | None) -> str:
+    """
+    Pull a readable HH:MM clock time out of a Resident Advisor timestamp.
+
+    RA returns full ISO datetimes like "2026-06-06T22:30:00.000", which is
+    exactly what used to leak into the UI as unreadable "00:00:00.000" noise.
+    This returns "22:30", or "" when there is no usable time (which is also
+    what RA sends for events with no announced start, e.g. a bare midnight).
+    """
+    if not iso_datetime:
+        return ""
+    # Real RA values are full ISO datetimes ("2026-06-06T22:30:00.000"); accept
+    # a bare "22:30" too so the function is robust to either shape.
+    part = iso_datetime.split("T", 1)[1] if "T" in iso_datetime else iso_datetime
+    clock = part[:5] # "22:30:00.000" -> "22:30"
+    # A bare "00:00" from RA almost always means "no time announced", not an
+    # actual midnight start, so we treat it as unknown rather than show it.
+    if clock in ("", "00:00"):
+        return ""
+    return clock if len(clock) == 5 and clock[2] == ":" else ""
+
+
+def _fmt_date_label(iso_date: str | None) -> str:
+    """Turn an ISO date ("2026-06-06") into a friendly "Sat 6 Jun", or ""."""
+    if not iso_date:
+        return ""
+    try:
+        from datetime import date as _date
+
+        d = _date.fromisoformat(iso_date[:10])
+    except (ValueError, TypeError):
+        return ""
+    return f"{_WEEKDAY_NAMES[d.weekday()]} {d.day} {_MONTH_NAMES[d.month]}"
+
+
+def _clean_address(address: str | None) -> str:
+    """
+    Tidy a Resident Advisor venue address into one readable line.
+
+    RA addresses are inconsistent: some are clean ("Am Flutgraben 2, 12435
+    Berlin"), some are semicolon-delimited with a trailing country ("Prinzen-
+    strasse 85; Friedrichshain-Kreuzberg; 10969 Berlin; Germany"). This
+    normalises separators to commas, drops a trailing "Germany", and collapses
+    repeated whitespace so the card always shows a single clean address line.
+    """
+    if not address or not address.strip():
+        return ""
+    parts = [p.strip() for p in re.split(r"[;,]", address) if p.strip()]
+    if parts and parts[-1].lower() in ("germany", "deutschland"):
+        parts.pop()
+    return ", ".join(parts)
+
+
+def _berlin_registry_address(venue: str) -> str:
+    """
+    Return the curated address for a known Berlin venue, or "".
+
+    For Berlin we trust the hand-checked club registry over RA's free-form
+    address field when the venue clearly matches a registered club (Berghain,
+    Tresor, Sisyphos, and the rest). For everything else the caller falls back
+    to RA's own address.
+    """
+    name = (venue or "").strip()
+    if not name:
+        return ""
+    try:
+        from tools.club_registry import get_club
+
+        entry = get_club(name)
+    except Exception:
+        return ""
+    if entry is None:
+        return ""
+    # Guard against the registry's loose contains-match firing on a short or
+    # generic venue name: only trust it when the names genuinely line up.
+    a, b = name.lower(), entry.name.lower()
+    if a == b or a.startswith(b) or b.startswith(a):
+        return _clean_address(entry.address)
+    return ""
+
+
 def _parse_price(cost: str | None) -> float | None:
     """Return the minimum numeric EUR value from a RA cost string, or None."""
     if not cost:
@@ -218,7 +307,7 @@ def _get_city_currency(city: str) -> str:
     Return the ISO 4217 currency code for a given city.
 
     Looks up the country stored in _AREA_META_CACHE (populated lazily by
-    resolve_area_id).  Falls back to "EUR" for unknown or euro-zone cities.
+    resolve_area_id). Falls back to "EUR" for unknown or euro-zone cities.
     """
     key = (city or "").strip().lower()
     meta = _AREA_META_CACHE.get(key) or {}
@@ -249,11 +338,11 @@ def _annotate_price(cost_str: str, city: str) -> str:
     so a Paris event can come back as the bare "13/16". This function makes the
     price unambiguous:
 
-      - empty / missing      -> "No price listed"
-      - free / donation      -> "Free"
-      - already has a symbol  -> trusted, returned unchanged
+      - empty / missing -> "No price listed"
+      - free / donation -> "Free"
+      - already has a symbol -> trusted, returned unchanged
         or known ISO code
-      - bare number / range  -> prefixed or suffixed with the city's currency
+      - bare number / range -> prefixed or suffixed with the city's currency
                                 (e.g. Paris "13/16" -> "€13/16",
                                  Copenhagen "150" -> "150 kr")
     """
@@ -275,14 +364,17 @@ def _annotate_price(cost_str: str, city: str) -> str:
     if any(re.search(rf"\b{re.escape(code.lower())}\b", lower) for code in known_codes):
         return cost_str.strip()
 
-    # Needs at least one digit to be a price; otherwise leave it as written.
+    # Needs at least one digit to be a price. A digit-less value is either a
+    # bare currency symbol ("€"), a lone dash ("-"), or stray punctuation that
+    # RA sometimes returns instead of a real price. Show "No price listed"
+    # rather than a meaningless symbol; keep it only if it carries real words.
     if not re.search(r"\d", cost_str):
-        return cost_str.strip()
+        return cost_str.strip() if re.search(r"[A-Za-z]", cost_str) else "No price listed"
 
     n = cost_str.strip()
     if currency in _SYMBOL_BEFORE:
-        return f"{symbol}{n}"      # e.g. "€13/16", "₺120"
-    return f"{n} {symbol}"          # e.g. "150 kr", "120 zł"
+        return f"{symbol}{n}" # e.g. "€13/16", "₺120"
+    return f"{n} {symbol}" # e.g. "150 kr", "120 zł"
 
 
 def _normalize_event(row: dict[str, Any], city: str = "") -> dict[str, Any]:
@@ -300,14 +392,36 @@ def _normalize_event(row: dict[str, Any], city: str = "") -> dict[str, Any]:
     content_url = raw.get("contentUrl") or ""
     url = f"https://ra.co{content_url}" if content_url.startswith("/") else content_url
 
+    iso_date = (raw.get("date") or "")[:10]
+    venue_name = venue_obj.get("name") or "Unknown venue"
+
+    # Address: for Berlin trust the curated registry on a confident match,
+    # otherwise fall back to RA's own (cleaned) address. Other cities use RA.
+    address = ""
+    if city.strip().lower() == "berlin":
+        address = _berlin_registry_address(venue_name)
+    if not address:
+        address = _clean_address(venue_obj.get("address"))
+
+    start_clock = _fmt_clock(raw.get("startTime"))
+    end_clock = _fmt_clock(raw.get("endTime"))
+    if start_clock and end_clock:
+        time_label = f"{start_clock} to {end_clock}"
+    else:
+        time_label = start_clock # may be "" when RA announced no time
+
     return {
         "id": str(raw.get("id", "")),
         "name": raw.get("title") or "Unknown event",
-        "date": (raw.get("date") or "")[:10],
-        "start_time": raw.get("startTime") or "",
+        "date": iso_date,
+        "date_label": _fmt_date_label(iso_date),
+        "start_time": start_clock,
+        "end_time": end_clock,
+        "time_label": time_label,
         "city": city,
-        "venue": venue_obj.get("name") or "Unknown venue",
+        "venue": venue_name,
         "area": area_obj.get("name") or "",
+        "address": address,
         "lineup": artists,
         "genres": genres,
         "price": cost_str,
@@ -332,18 +446,18 @@ def find_events(
     to ISO format (YYYY-MM-DD) before calling.
 
     DO NOT call this tool for:
-    - Music theory or history questions  →  use explain_music instead
-    - Artist label or release background →  use enrich_artist instead
+    - Music theory or history questions → use explain_music instead
+    - Artist label or release background → use enrich_artist instead
 
     Args:
         date_from: Inclusive start date, ISO format (e.g. "2024-01-05").
-        date_to:   Inclusive end date,   ISO format (e.g. "2024-01-07").
-        filters:   Optional dict with any of:
-                   "max_price" (float)  — drop events priced above this EUR value
-                   "genres"    (list)   — keep only events matching these genre names
-                   "venue"     (str)    — keep only events at this venue (partial match)
-                   "area"      (str)    — keep only events in this neighbourhood
-        city:      City to search (e.g. "Berlin", "Cologne", "Amsterdam").
+        date_to: Inclusive end date, ISO format (e.g. "2024-01-07").
+        filters: Optional dict with any of:
+                   "max_price" (float), drop events priced above this EUR value
+                   "genres" (list), keep only events matching these genre names
+                   "venue" (str), keep only events at this venue (partial match)
+                   "area" (str), keep only events in this neighbourhood
+        city: City to search (e.g. "Berlin", "Cologne", "Amsterdam").
                    Defaults to config.HOME_CITY ("Berlin"). RA covers major
                    scenes well; small towns may return nothing.
 
@@ -417,7 +531,7 @@ def find_events(
 
     events = [_normalize_event(r, city=city) for r in rows]
 
-    # Client-side filters — RA's server doesn't expose all these natively
+    # Client-side filters, RA's server doesn't expose all these natively
     max_price: float | None = filters.get("max_price")
     if max_price is not None:
         events = [
@@ -461,7 +575,7 @@ def compare_events(
 
     CALL THIS TOOL after find_events when the user asks which event fits
     them, or which one to choose ("which should I go to", "what fits my
-    taste", "rank these for me"). Produces honest rankings — mismatches
+    taste", "rank these for me"). Produces honest rankings, mismatches
     are flagged, not quietly dropped.
 
     DO NOT call this tool:
@@ -469,20 +583,20 @@ def compare_events(
     - With an empty events list
 
     Args:
-        events:        List of event dicts as returned by find_events.
+        events: List of event dicts as returned by find_events.
         taste_profile: The user's taste profile dict from memory.load_profile.
-                       Pass {} for a new user — rankings are generated but less
+                       Pass {} for a new user, rankings are generated but less
                        personalised.
 
     Returns:
         {
             "ranked_events": [
                 {
-                    "rank":        int,
-                    "event_name":  str,
+                    "rank": int,
+                    "event_name": str,
                     "fit_summary": str,
-                    "reasoning":   str,
-                    "tradeoff":    str | null,
+                    "reasoning": str,
+                    "tradeoff": str | null,
                 },
                 ...
             ]
@@ -516,6 +630,12 @@ def compare_events(
         logger.warning("compare_events_json_failed", error=str(exc), snippet=raw_text[:200])
         return {"ranked_events": []}
 
+    # Enforce house typography on the reader-facing reasoning fields.
+    for r in ranked.get("ranked_events", []):
+        for field in ("fit_summary", "reasoning", "tradeoff"):
+            if isinstance(r.get(field), str):
+                r[field] = textfmt.humanize(r[field])
+
     logger.info("compare_events_ok", n_ranked=len(ranked.get("ranked_events", [])))
     return ranked
 
@@ -533,14 +653,14 @@ if __name__ == "__main__":
     date_to = sun.isoformat()
 
     print("=" * 60)
-    print(f"Test 1: find_events Berlin  {date_from} -> {date_to}")
+    print(f"Test 1: find_events Berlin {date_from} -> {date_to}")
     print("=" * 60)
     events = find_events(date_from, date_to)
-    print(f"  returned {len(events)} events")
+    print(f" returned {len(events)} events")
     for e in events[:5]:
         print(
-            f"  [{e['date']}] {e['name'][:38]:<38}  "
-            f"@ {e['venue'][:20]:<20}  {e['price'] or 'n/a':>8}  "
+            f" [{e['date']}] {e['name'][:38]:<38} "
+            f"@ {e['venue'][:20]:<20} {e['price'] or 'n/a':>8} "
             f"lineup={e['lineup'][:2]}"
         )
     assert isinstance(events, list), "FAIL: find_events must return a list"
@@ -550,12 +670,12 @@ if __name__ == "__main__":
     print("Test 2: price filter max_price=0 -- free events only")
     print("=" * 60)
     free = find_events(date_from, date_to, filters={"max_price": 0})
-    print(f"  free events: {len(free)}")
+    print(f" free events: {len(free)}")
     for e in free:
         assert e["price_numeric"] is None or e["price_numeric"] == 0.0, (
             f"FAIL: price filter leaked paid event '{e['name']}' at {e['price']}"
         )
-    print("  price filter OK")
+    print(" price filter OK")
 
     if events:
         print()
@@ -569,19 +689,19 @@ if __name__ == "__main__":
             "preferred_areas": ["Friedrichshain"],
         }
         ranked = compare_events(events[:6], taste)
-        print(f"  ranked {len(ranked.get('ranked_events', []))} events")
+        print(f" ranked {len(ranked.get('ranked_events', []))} events")
         for r in ranked.get("ranked_events", [])[:3]:
-            print(f"  #{r['rank']}  {r['event_name'][:38]:<38}  {r['fit_summary'][:55]}")
+            print(f" #{r['rank']} {r['event_name'][:38]:<38} {r['fit_summary'][:55]}")
         assert "ranked_events" in ranked, "FAIL: compare_events must return ranked_events key"
         assert isinstance(ranked["ranked_events"], list), "FAIL: ranked_events must be a list"
     else:
-        print("\n  (no events this weekend -- compare_events test skipped)")
+        print("\n (no events this weekend -- compare_events test skipped)")
 
     print()
     print("Test 4: compare_events empty input -> graceful empty result")
     empty_result = compare_events([], {})
     assert empty_result == {"ranked_events": []}, "FAIL: empty input must return empty ranked_events"
-    print("  empty-input guard OK")
+    print(" empty-input guard OK")
 
     print()
     print("All assertions passed.")

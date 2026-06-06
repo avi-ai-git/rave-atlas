@@ -76,7 +76,7 @@ class TestWeekendDates:
         """
         from datetime import date as _date
         from prompts import system as sys_mod
-        friday = _date(2026, 6, 5)  # June 5 2026 = Friday
+        friday = _date(2026, 6, 5) # June 5 2026 = Friday
         monkeypatch.setattr(sys_mod, "date", type("_D", (), {"today": staticmethod(lambda: friday)})())
         d = sys_mod.weekend_dates()
         assert d["this_friday"] == "2026-06-05", (
@@ -93,7 +93,7 @@ class TestWeekendDates:
         """
         from datetime import date as _date
         from prompts import system as sys_mod
-        saturday = _date(2026, 6, 6)  # June 6 2026 = Saturday
+        saturday = _date(2026, 6, 6) # June 6 2026 = Saturday
         monkeypatch.setattr(sys_mod, "date", type("_D", (), {"today": staticmethod(lambda: saturday)})())
         d = sys_mod.weekend_dates()
         assert d["this_friday"] == "2026-06-05", (
