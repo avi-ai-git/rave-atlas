@@ -157,7 +157,7 @@ Sonnet built roughly 80% of the codebase. Opus was reserved for the three phases
 
 **LangGraph `SqliteSaver`:** Streamlit reruns the script on every interaction, resetting in-memory state. `SqliteSaver` persists conversation threads to disk keyed by `session_id` so the page can reload and the agent resumes exactly where it left off. The taste profile is a separate concern (it's a user model, not conversation history) stored in a second SQLite table.
 
-**ChromaDB with local sentence-transformers:** embedding the KB with an API adds cost, a network dependency, and a rate limit. The local `all-MiniLM-L6-v2` model is free, runs offline, and is fast enough for a seven-file knowledge base.
+**ChromaDB with local sentence-transformers:** embedding the KB with an API adds cost, a network dependency, and a rate limit. The local `all-MiniLM-L6-v2` model is free, runs offline, and is fast enough for the 48-file knowledge base (148 chunks). Vectors persist in `data/chroma/` across restarts; the pipeline is idempotent so re-running `ingest.py` after any KB edit is safe.
 
 **Mistral moderation (score-gated) over regex:** a regex denylist is trivially bypassed by obfuscation or paraphrasing. A classifier assigns probabilities across harm categories regardless of surface form. Score-based gating is the OWASP LLM01 mitigation.
 
@@ -277,14 +277,15 @@ rave-atlas/
 │   └── kb_enrich.py         Reddit + web KB ingestion: fetch, LLM-clean, write to community/
 ├── .github/workflows/
 │   └── weekend-digest.yml   Cron (Fri 07:00 UTC) -> weekend_telegram, app-independent
-├── knowledge_base/
-│   ├── genres_techno.md
-│   ├── genres_house.md
-│   ├── genres_psytrance.md
-│   ├── genres_dubstep.md
+├── knowledge_base/           48 curated markdown files, ingested to ChromaDB
+│   ├── genres_techno.md      + genres_house, genres_psytrance, genres_dubstep
 │   ├── berlin_scene_history.md
-│   ├── labels.md
-│   ├── track_anatomy.md
+│   ├── berlin_berghain_ecosystem.md  + berlin_history_deep_cuts, berlin_labels_current
+│   ├── berlin_club_venues.md + berlin_club_doors, berlin_party_series, berlin_smaller_clubs
+│   ├── labels.md, track_anatomy.md, music_theory_electronic.md
+│   ├── electronic_music_genres_bpm.md, rave_culture_history.md
+│   ├── club_etiquette_logistics.md, harm_reduction.md
+│   ├── city_primer_amsterdam.md  + 28 other European city primers
 │   └── community/           Auto-enriched drafts from kb_enrich.py (gitignored)
 ├── docs/
 │   └── KB_EXPANSION.md      Sourcing checklist for expanding the knowledge base
