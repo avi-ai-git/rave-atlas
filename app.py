@@ -507,6 +507,10 @@ def _render_chat(tab_key: str, empty_hint: str) -> None:
     if not messages:
         st.caption(empty_hint)
         return
+    # Event cards are rendered once — for the first assistant message that
+    # called find_events. Follow-up messages never re-render the same cards;
+    # the agent's text already references events by name with RA links.
+    events_rendered_at: int | None = None
     for idx, msg in enumerate(messages):
         with st.chat_message(msg["role"]):
             if msg.get("blocked"):
@@ -516,7 +520,11 @@ def _render_chat(tab_key: str, empty_hint: str) -> None:
             if msg["role"] == "assistant" and not msg.get("blocked"):
                 tc = msg.get("tool_calls", [])
                 if tab_key == "weekend":
-                    _render_events_block(tc, idx)
+                    has_events = any(c.get("name") == "find_events" for c in tc)
+                    if has_events and events_rendered_at is None:
+                        _render_events_block(tc, idx)
+                        events_rendered_at = idx
+                    # Subsequent turns: event cards already visible above, skip.
                 _render_tool_trace(tc)
                 if msg.get("usage"):
                     _render_cost_badge(msg.get("model", ""), msg["usage"], msg.get("cost_estimate", 0.0))
@@ -590,7 +598,7 @@ def _tab_weekend(settings: dict) -> None:
     st.divider()
     _render_chat("weekend", "What's on in Berlin this weekend? Ask about any date, genre, or budget.")
     _handle_chat_input("weekend", settings,
-                       placeholder="What's on this Friday? / Hypnotic techno under 20 euros / What fits my taste?")
+                       placeholder="What's on this Friday? / Find me a night at Tresor or Sisyphos / Who's playing at Berghain this weekend?")
 
 
 def _tab_learn(settings: dict) -> None:

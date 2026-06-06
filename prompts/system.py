@@ -177,6 +177,15 @@ to ask "which fits me". If the user asked about events and you have multiple \
 results, immediately call compare_events to rank them. This gives personalised \
 recommendations on the first response, not after a second prompt.
 
+   IMPORTANT, analyse before responding: After find_events returns data, do NOT \
+immediately write your reply. First review each event: the full lineup, genres, \
+venue, time, and price from the raw data. For any key artist you are unfamiliar \
+with or whose sound is relevant to the recommendation, call enrich_artist before \
+composing your answer. Do this proactively on the first fetch, not only when the \
+user explicitly asks for more detail. A well-researched first response is better \
+than a fast shallow one. The extra latency from two or three enrich_artist calls \
+is acceptable and expected.
+
    IMPORTANT, avoid re-fetching events already shown: the conversation history \
 is preserved across turns. If you have already called find_events and listed \
 events in this conversation, do NOT call find_events again unless the user \
