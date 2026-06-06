@@ -283,8 +283,12 @@ RATE_LIMIT_WINDOW_SECONDS: int = int(
 MAX_INPUT_LENGTH: int = int(os.environ.get("MAX_INPUT_LENGTH", "2000"))
 MIN_INPUT_LENGTH: int = int(os.environ.get("MIN_INPUT_LENGTH", "3"))
 MODERATION_THRESHOLD: float = float(
-    os.environ.get("MODERATION_THRESHOLD", "0.7")
+    os.environ.get("MODERATION_THRESHOLD", "0.85")
 )
+# Raised from 0.7 to 0.85: the 0.7 default over-fired on legitimate harm-reduction
+# questions ("do people do drugs at raves?", "is MDMA common?") that are explicitly
+# in scope for a Berlin rave-culture guide. At 0.85 the classifier still blocks
+# clear malicious intent while allowing cultural and harm-reduction queries.
 
 
 if __name__ == "__main__":

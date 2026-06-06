@@ -79,12 +79,18 @@ _MISTRAL_MODERATION_URL = "https://api.mistral.ai/v1/moderations"
 # app's domain. Applying the default 0.7 threshold causes false positives
 # on completely benign queries like "find me events at the rave this weekend".
 _LENIENT_CATEGORIES: frozenset[str] = frozenset({
+    # Drug/substance — core false-positive source for rave-culture queries.
     "illegal_drugs_and_tobacco_or_alcohol",
     "drugs",
     "substance_abuse",
     "substance",
+    # Mistral may return "dangerous_and_criminal_content" for harm-reduction
+    # questions like "do people do drugs at raves?" — this is explicitly in
+    # scope for a Berlin rave-culture guide.  Require near-certainty to block.
+    "dangerous_and_criminal_content",
+    "criminal_activity",
 })
-_LENIENT_THRESHOLD: float = 0.92  # require near-certainty for drug categories
+_LENIENT_THRESHOLD: float = 0.92  # require near-certainty for these categories
 
 
 def moderate(text: str) -> tuple[bool, dict[str, float]]:
