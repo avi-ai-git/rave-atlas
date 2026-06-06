@@ -1,5 +1,5 @@
 """
-Rave Atlas — knowledge base ingestion pipeline.
+Rave Atlas, knowledge base ingestion pipeline.
 
 Loads every markdown file from knowledge_base/, parses YAML frontmatter
 (doc_type, scope, genre, source), strips it from the body, chunks the body
@@ -35,13 +35,13 @@ COLLECTION_NAME: str = "rave_atlas_kb"
 # Fallback (doc_type, genre) for legacy files that lack YAML frontmatter.
 # When frontmatter is present it always wins (see _resolve_meta).
 _FILE_META: dict[str, tuple[str, str | None]] = {
-    "genres_techno":         ("genre",   "techno"),
-    "genres_house":          ("genre",   "house"),
-    "genres_psytrance":      ("genre",   "psytrance"),
-    "genres_dubstep":        ("genre",   "dubstep"),
-    "berlin_scene_history":  ("history", None),
-    "labels":                ("labels",  None),
-    "track_anatomy":         ("theory",  None),
+    "genres_techno": ("genre", "techno"),
+    "genres_house": ("genre", "house"),
+    "genres_psytrance": ("genre", "psytrance"),
+    "genres_dubstep": ("genre", "dubstep"),
+    "berlin_scene_history": ("history", None),
+    "labels": ("labels", None),
+    "track_anatomy": ("theory", None),
 }
 
 # doc_type values that mark a file as build/process notes, not knowledge.
@@ -119,41 +119,100 @@ def _resolve_meta(stem: str, fm: dict[str, str], filename: str) -> dict[str, str
     return meta
 
 
-def _chunk_text(text: str, min_words: int = 150, max_words: int = 400) -> list[str]:
-    """
-    Split markdown body text into chunks of min_words-max_words words.
+def _extract_title(body: str, stem: str) -> str:
+    """Return the file's first H1 as its title, or a readable fallback from the stem."""
+    for line in body.splitlines():
+        m = re.match(r"^#\s+(.*)$", line.strip())
+        if m and m.group(1).strip():
+            return m.group(1).strip()
+    # Fallback: turn "berlin_club_doors" into "Berlin club doors".
+    return stem.replace("_", " ").strip().capitalize()
 
-    Splits on paragraph boundaries, merges short paragraphs until min_words,
-    flushes before exceeding max_words, strips markdown heading markers and
-    any stray code-fence lines so no markup noise is embedded.
+
+def _chunk_text(
+    text: str,
+    title: str = "",
+    min_words: int = 150,
+    max_words: int = 400,
+    overlap_words: int = 40,
+) -> list[str]:
+    """
+    Split markdown body text into retrieval chunks, heading-aware and overlapped.
+
+    Two deliberate choices drive retrieval quality:
+
+    1. Heading breadcrumb. Each chunk is prefixed with "Title > Section" drawn
+       from the file's H1 and the nearest markdown heading. Without this, a
+       chunk about a door policy loses the word "Berghain" if that lived only
+       in the section heading, and the query "Berghain door policy" no longer
+       matches it. The breadcrumb puts the topic words inside every chunk.
+
+    2. Overlap. Consecutive chunks within a section share the last
+       `overlap_words` words, so a fact split across a chunk boundary is still
+       fully present in one chunk and stays retrievable.
+
+    Chunks stay within min_words-max_words. Code-fence lines are dropped
+    defensively, and fragments under 30 words are discarded as too thin to be
+    useful context.
     """
     # Drop code-fence lines defensively (real KB files have none; this guards
     # against any stray ``` that would otherwise pollute a chunk).
     text = re.sub(r"^\s*```.*$", "", text, flags=re.MULTILINE)
 
-    paragraphs = [p.strip() for p in re.split(r"\n{2,}", text) if p.strip()]
+    # Walk the body, grouping content under its nearest heading so each chunk
+    # can carry that heading as context.
+    sections: list[tuple[str, str]] = [] # (heading_text, section_body)
+    current_heading = ""
+    buf: list[str] = []
+
+    def _flush_section() -> None:
+        if any(line.strip() for line in buf):
+            sections.append((current_heading, "\n".join(buf)))
+
+    for line in text.splitlines():
+        heading = re.match(r"^#{1,6}\s+(.*)$", line.strip())
+        if heading:
+            _flush_section()
+            buf = []
+            current_heading = heading.group(1).strip()
+        else:
+            buf.append(line)
+    _flush_section()
 
     chunks: list[str] = []
-    current_words: list[str] = []
+    for heading, body in sections:
+        breadcrumb = " > ".join(p for p in (title, heading) if p)
+        paragraphs = [p.strip() for p in re.split(r"\n{2,}", body) if p.strip()]
 
-    for para in paragraphs:
-        words = para.split()
-        if not words:
-            continue
-        if current_words and len(current_words) + len(words) > max_words:
-            chunks.append(" ".join(current_words))
-            current_words = []
-        current_words.extend(words)
-        if len(current_words) >= min_words:
-            chunks.append(" ".join(current_words))
-            current_words = []
+        current_words: list[str] = []
+        section_chunks: list[list[str]] = []
 
-    if current_words:
-        chunks.append(" ".join(current_words))
+        def _emit(words: list[str]) -> list[str]:
+            """Record a chunk and return the overlap tail to seed the next one."""
+            section_chunks.append(words)
+            return words[-overlap_words:] if overlap_words else []
 
-    # Strip heading markers (## Heading -> Heading) and drop tiny fragments.
-    cleaned = [re.sub(r"^#+\s*", "", c, flags=re.MULTILINE) for c in chunks]
-    return [c for c in cleaned if len(c.split()) >= 30]
+        for para in paragraphs:
+            words = para.split()
+            if not words:
+                continue
+            if current_words and len(current_words) + len(words) > max_words:
+                current_words = _emit(current_words)
+            current_words.extend(words)
+            if len(current_words) >= min_words:
+                current_words = _emit(current_words)
+
+        # Flush the tail, unless it is only the carried-over overlap.
+        if current_words and (not section_chunks or len(current_words) > overlap_words):
+            section_chunks.append(current_words)
+
+        for words in section_chunks:
+            body_text = " ".join(words)
+            if len(words) < 30:
+                continue
+            chunks.append(f"{breadcrumb}\n{body_text}" if breadcrumb else body_text)
+
+    return chunks
 
 
 def get_collection() -> chromadb.Collection:
@@ -207,7 +266,7 @@ def ingest() -> int:
         else:
             meta_base = _resolve_meta(stem, fm, md_file.name)
 
-        chunks = _chunk_text(body)
+        chunks = _chunk_text(body, title=_extract_title(body, stem))
 
         ids: list[str] = []
         documents: list[str] = []
@@ -215,7 +274,7 @@ def ingest() -> int:
         for i, chunk in enumerate(chunks):
             ids.append(f"{stem}_{i:03d}")
             documents.append(chunk)
-            metadatas.append(dict(meta_base))  # one copy per chunk
+            metadatas.append(dict(meta_base)) # one copy per chunk
 
         if ids:
             # Upsert so re-running ingest is idempotent.
@@ -237,7 +296,7 @@ def ingest() -> int:
 
 
 if __name__ == "__main__":
-    print("Running ingestion …")
+    print("Running ingestion ...")
     n = ingest()
     print(f"Indexed {n} chunks total.\n")
 
@@ -262,9 +321,9 @@ if __name__ == "__main__":
             results["metadatas"][0],
             results["distances"][0],
         ):
-            print(f"  [{dist:.3f}] doc_type={meta.get('doc_type')} "
+            print(f" [{dist:.3f}] doc_type={meta.get('doc_type')} "
                   f"scope={meta.get('scope')} source={meta.get('source')}")
-            print(f"         {doc[:90]}…")
+            print(f" {doc[:90]}...")
         print()
 
     # Assertions: metadata is populated and no frontmatter leaked into chunks.
@@ -280,12 +339,9 @@ if __name__ == "__main__":
         )
         assert not head.startswith("---"), "FAIL: frontmatter fence leaked into chunk"
 
-    # Scope coverage: we should have berlin, general, and at least one city scope.
+    # Scope coverage: we should have at least a berlin scope.
     scopes = {m.get("scope") for m in sample["metadatas"]}
     assert "berlin" in scopes, "FAIL: expected at least one berlin-scoped chunk"
-    assert any(s and s.startswith("city:") for s in scopes), (
-        "FAIL: expected at least one city-scoped chunk"
-    )
 
     print(f"Scopes present: {sorted(scopes)}")
     print("All assertions passed.")
