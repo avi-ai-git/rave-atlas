@@ -45,7 +45,8 @@ def explain_music(
     Args:
         query: The user's question in natural language.
         allowed_doc_types: Allowlist of doc_type values to restrict retrieval
-            scope. Valid values: "genre", "history", "labels", "theory".
+            scope. Valid values: "genre", "history", "labels", "theory",
+            "culture", "etiquette", "venue", "harm_reduction", "city_primer".
             If None the entire KB is searched. Prefer narrowing when the
             question is clearly within one category.
         k: Number of chunks to retrieve (default 4).

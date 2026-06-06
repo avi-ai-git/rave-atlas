@@ -1,5 +1,5 @@
 ---
-doc_type: berlin
+doc_type: culture
 scope: berlin
 source: Sven Marquardt memoir "Die Nacht ist Leben" (2013), GQ Germany, Mixmag, Dancing Astronaut, Groove Magazine, RA
 ---

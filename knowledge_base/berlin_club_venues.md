@@ -1,5 +1,5 @@
 ---
-doc_type: berlin_club_venues
+doc_type: venue
 scope: berlin
 genre: all
 source: curated_research
@@ -114,4 +114,13 @@ source: curated_research
 - **Sound**: house, techno, tech‑house; bookings blend well‑known names with Berlin residents.
 - **Events**: regular Friday and Saturday programming, plus special one‑offs and live‑adjacent shows.
 - **Neighbourhood**: lively but not hyper‑touristy Kreuzberg; when you leave there are still people on the streets and food nearby.
+
+## General norms across Berlin clubs
+
+- **Cash**: most serious Berlin clubs are cash-only. Berghain and Tresor are both cash-only; bring at least 50 to 80 euros before arrival. Some newer venues (RSO, OHM) accept card but cash is safer.
+- **Cloakroom (Garderobe)**: coat check is mandatory in winter at most venues. Fees are typically 1 to 2 euros, sometimes with a coin-return hook. Large bags are unwelcome and may be refused.
+- **No-photo rule**: camera stickers are applied to phone cameras at Berghain, Tresor, RSO, OHM, and about blank. Breaking the rule means immediate ejection and potential ban.
+- **SONAR Safer Nightlife**: a harm-reduction and consent awareness initiative active in Berlin's club scene. Club spaces such as Birgit und Bier have hosted SONAR installations providing drug-checking information, anonymous naloxone access, and trained awareness teams on the dancefloor. The programme is part of a broader Berlin model where public health organisations (Fixpunkt, Vista, Schwulenberatung) work directly with club operators.
+- **Water**: free or very cheap water fountains are standard at Berghain, about blank, and RSO. Never go more than two hours without hydration.
+- **Timing**: Berlin clubs open late and most people arrive between 1am and 3am. Arriving at midnight feels early; arriving at 4am is normal. Afterhours continue until Monday afternoon or later.
 

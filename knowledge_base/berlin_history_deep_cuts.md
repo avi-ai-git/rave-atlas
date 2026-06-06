@@ -1,5 +1,5 @@
 ---
-doc_type: berlin
+doc_type: history
 scope: berlin
 source: "Der Klang der Familie" (Felix Denk and Sven von Thülen, 2012), RA, Electronic Beats, Groove Magazine, Berghain.berlin, Tresor Foundation, Wikipedia
 ---
@@ -71,3 +71,9 @@ source: "Der Klang der Familie" (Felix Denk and Sven von Thülen, 2012), RA, Ele
 ## The A100 autobahn threat
 - Berlin's Senate has approved the continued construction of the A100 urban motorway through Friedrichshain and Neukolln. The planned 17th construction phase would run directly through or adjacent to about blank, Else, Renate, and other club spaces.
 - The Berlin club community has been fighting this for over a decade. It is a live threat as of 2025 with no resolution.
+
+## The economic weight of club culture
+
+- The Clubcommission (Berlin's club industry association) estimated in their 2018 report that club tourism generates approximately 3 million visitors per year specifically for nightlife, contributing around 1.48 billion euros to the Berlin economy annually.
+- This figure is cited in policy debates to argue that clubs deserve the same municipal protection as theatres, concert halls and museums.
+- The economic case was strengthened by Germany's recognition of Berlin techno as intangible cultural heritage in March 2024, and by the Finanzgericht Berlin-Brandenburg VAT ruling (case 5 K 5089/14) which classified Berghain admission as a cultural service exempt from standard entertainment tax, a first for a nightclub in Germany.

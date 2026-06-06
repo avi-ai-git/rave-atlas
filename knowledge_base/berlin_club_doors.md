@@ -1,5 +1,5 @@
 ---
-doc_type: berlin_club_doors
+doc_type: etiquette
 scope: berlin
 genre: all
 source: curated_research

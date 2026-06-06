@@ -1,5 +1,5 @@
 ---
-doc_type: berlin
+doc_type: labels
 scope: berlin
 source: RA, Bandcamp, Discogs, Groove Magazine, XLR8R, Resident Advisor label features
 ---

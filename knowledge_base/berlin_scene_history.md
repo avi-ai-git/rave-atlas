@@ -1,5 +1,5 @@
 ---
-doc_type: berlin_scene_history
+doc_type: history
 scope: berlin
 genre: all
 source: curated_research

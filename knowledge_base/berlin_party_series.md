@@ -1,5 +1,5 @@
 ---
-doc_type: berlin
+doc_type: culture
 scope: berlin
 source: RA, Mixmag, Ostgut Ton, individual party Instagram accounts, Groove Magazine
 ---
@@ -98,6 +98,92 @@ Locals navigate Berlin's nightlife by series, not by venue. Knowing that Homopat
 
 ## Club der Visionaere specials
 - Largely unscheduled; bookings confirmed only a week or two ahead. Ricardo Villalobos and Richie Hawtin have played unannounced. The point is spontaneity and regulars knowing to check.
+
+## Kater Blau and its orbit
+
+- Kater Blau itself runs long weekender parties that often blur into each other rather than being branded, but some takeovers have their own character.
+- Expect long, trippy house and techno arcs with a lot of Bar25 lineage DJs, plenty of live sets and b2b marathons.
+- You rarely get full timetables in advance. Running orders are often only posted inside the club, so you come for the curation rather than a specific hour.
+
+### How to prepare for Kater
+
+- Clothes: comfortable, playful, slightly eccentric rather than glossy. Think layers you can dance and nap in, not club photoshoot outfits.
+- Vibe: soft chaos. People drift between floors, terraces and the boat. Do not arrive in a big loud group.
+- Time logic: weekends often start late Friday or Saturday night and run through to Monday. Daytime on the terrace can be as special as peak time inside.
+
+## Sisyphos
+
+- Sisyphos operates more like a mini festival than a list of individual parties. The recurring pattern is simply "weekend at Sisy": Friday to Monday, indoors and outdoors.
+- Music spans from sunny daytime house in the garden to heavier techno in the warehouse style room at night.
+- The cultural program can include live bands, circus acts, performance art and workshops sprinkled around the grounds.
+
+### How to prepare for Sisyphos
+
+- Clothes: festival practical. Sneakers or boots, layers for cold nights and hot days, outfits you do not mind getting dusty.
+- Vibe: extremely long horizon. Plan for sleep, food and hydration. Many people leave, rest and come back.
+- Neighbourhood: you are in a self contained world. There is very little reason to club hop once you are inside.
+
+## ://about blank and queer left parties
+
+- ://about blank is home or former home to several queer and left leaning party series that have shaped the city.
+- Buttons: long running queer house and techno party previously at about blank, usually on a Friday once a month, known for a diverse, high energy crowd and long, sweaty nights.
+- Golosa: body and sex positive party series with a focus on queer and trans joy, also associated with about blank.
+- Many of these brands now float between venues such as about blank, RSO, Club Ost or OXI, but carry their own crowd and safer space rules with them.
+
+### How to approach these nights
+
+- Read the event text. They usually spell out safer space rules, consent guidelines and sometimes photography restrictions beyond the usual no photo policy.
+- Clothes can be expressive and gender non conforming. Think what makes you feel like you, not what looks safe.
+- Expect awareness teams and a low tolerance for racist, homophobic or transphobic behaviour.
+
+## OXI and garden marathons
+
+- OXI in Friedrichshain hosts many branded events, often day to night garden parties that then move indoors.
+- The club positions itself as a queer and FLINTA safer space with a strong consent and no photo focus.
+- Events like "Small Great House" and label showcases often use both the large outdoor garden and several indoor floors, including a vinyl only room.
+
+### How to prepare for OXI
+
+- Clothes: comfortable, expressive, weather aware. Sun and rain can both happen in one day.
+- Vibe: welcoming but value driven. Respect pronouns, personal space and the awareness team.
+- Neighbourhood: semi industrial strip that turns into a small village during events, with food and long chill zones.
+
+## Wilde Renate, Else and House of Lunacy
+
+- Renate hosts many resident led party series. Some focus on darker electro, breakbeat and acid, others on house and trippy techno.
+- The club is also home to immersive, costume heavy nights such as House of Lunacy, a successor to the pre pandemic House of Red Doors.
+- These nights build full worlds with performers, set design and kink friendly play areas.
+
+### How to approach costume and kink nights
+
+- Expect a dresscode that asks more than "black top". Think fantasy, mythology, cabaret, fetish or couture, depending on the theme.
+- Check guidelines around nudity, consent and photography. Many such events have their own code of conduct.
+- If you are not up for dressing up, pick another night. Showing up underdressed can feel like breaking the spell for everyone else.
+
+## Club der Visionaere and minimal river life
+
+- Club der Visionaere on the canal between Treptow and Kreuzberg is more of a bar and afterhour venue than a classic club.
+- Music is almost always minimal house and techno, often from very respected DJs playing unannounced, especially in the late afternoon and evening.
+- Opening hours are highly weather dependent. In summer it can run from Friday to Monday almost nonstop.
+
+### How to use CdV
+
+- Perfect for a warm up, sun down session or afterhours when you want a quieter, heady groove.
+- Clothes: light, casual, summery. It is an outdoor wooden deck above water.
+- Neighbourhood: by the canal, close to Arena, Hoppetosse and other waterside spots.
+
+## Queer flagship parties
+
+- Herrensauna: industrial queer techno party founded in 2015, known for very hard sound, strict doors and a deeply loyal crowd. It has moved venues over time but carries its own universe wherever it lands.
+- Cocktail d'Amore: long running monthly queer party famous for cosmic disco, Italo and house in large day into night formats. People travel from all over Europe for it.
+- Gegen: queer, sex positive party often hosted at KitKatClub and other venues, combining heavy techno with kink and performance.
+- Pornceptual, Buttons, Golosa, Chantal's House of Shame, Horse Meat Disco, Body Language: each with its own micro scene, music emphasis and dress codes.
+
+### General prep for queer parties
+
+- Clothes: camp, subversive, fun. It is hard to be "too much" as long as you are comfortable.
+- Attitude: listen more than you speak, do not assume anyone's gender or sexuality, ask before touching.
+- Neighbourhoods: mostly around Friedrichshain, Kreuzberg and Mitte, but venues can shift. Always check current location.
 
 ## How to find out what is running
 - RA (Resident Advisor, ra.co): the definitive Berlin event calendar. Filter by date, venue and genre.
