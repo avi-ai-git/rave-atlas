@@ -11,3 +11,7 @@ dist/
 build/
 .DS_Store
 *.log
+
+# Local scratch: uncommitted drafts, research notes, and submission checklist
+_local_drafts/
+SUBMISSION_CHECKLIST.md

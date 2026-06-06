@@ -1,441 +1,183 @@
-# CLAUDE.md — Rave Atlas
+# CLAUDE.md, Berlin Rave Atlas
 
-> **Dual-purpose document.**
-> (1) Onboarding context for Claude Code in future sessions — read this before touching any file.
-> (2) Process document for reviewers and hiring managers — shows how this project was designed and built using agentic coding methodology.
+This document serves two readers. It onboards a future Claude Code session before it touches any file, and it records, for anyone reading the repository, how the project was designed, what was chosen, and why each alternative was rejected. It is written to be defended out loud, not skimmed.
 
----
-
-## Knowledge base — iterative development note
-
-The `knowledge_base/` markdown files were built in two stages, intentionally:
-
-**Stage 1 (Phase 1):** Infrastructure-first — seed content was written to validate the ingestion pipeline (`ingest.py`), chunking strategy, and ChromaDB metadata schema (doc_type, genre). Techno and house received full treatment; other genres had solid stubs. The goal was a working, testable RAG pipeline, not a complete encyclopaedia.
-
-**Stage 2 (post-scaffold, before submission):** Content was deepened and personalised — adding first-hand Berlin venue knowledge, specific nights and lineups, personal genre opinions, and artists discovered through real use of the app. The ingestion pipeline is idempotent (`upsert`), so re-running `uv run python ingest.py` after any KB edit is safe and instant.
-
-This two-stage approach is deliberate. A knowledge base that is genuinely personal and opinionated outperforms a broad but thin one for this use case — the rubric rewards a "relevant knowledge base for your domain," and domain expertise cannot be scaffolded by a machine. The infrastructure was scaffolded first so the content improvements could be tested immediately against the running retrieval tool.
+Berlin Rave Atlas was built by a developer pairing with Claude Code as a coding collaborator: the developer set the problem, the architecture, and the quality bar, and used the agent to draft modules, argue trade-offs, and test each piece against real data before keeping it. The decisions below are the developer's; the agent was the tool that made iterating on them fast.
 
 ---
 
-## What is Rave Atlas?
+## 1. What it is and the problem it solves
 
-### The problem
+Berlin has the densest electronic music scene on earth, and planning a night in it is fragmented, high-effort work. Events are scattered across Resident Advisor, Instagram, and word of mouth. You cannot tell which party matches your taste without already knowing the scene, and newcomers do not know the genres, the labels, or which artists are worth the trip.
 
-Berlin has the densest electronic music scene on earth. Planning a night out is fragmented and high-effort: events are scattered across Resident Advisor, Instagram, and word of mouth; you can't easily tell which party matches your taste without domain knowledge; and newcomers and tourists don't know the genres, the labels, or which artists are worth the trip. You waste a Friday afternoon with twenty tabs open and still pick wrong.
+The app is one agent that does four things: it fetches live Berlin events and reasons about which match your taste and budget rather than just listing them; it teaches the music, genres, history, and Berlin's labels from a curated knowledge base; it builds a set with a deliberate energy arc and playable previews; and it remembers your preferences across sessions and can send a Friday briefing.
 
-### The solution
-
-A single AI agent that:
-- Fetches live Berlin events from Resident Advisor and **reasons** about which match your taste and budget — not just lists them
-- Teaches you the music — genres, history, Berlin's labels (Tresor, Ostgut Ton / Berghain, BPitch) — from a curated knowledge base
-- Builds you a set list with an energy arc and **playable** 30-second Deezer previews + YouTube links
-- Remembers your preferences across sessions and sends a Friday-morning briefing covering the weekend through Tuesday
-
-### Why an agent (not a chatbot or a RAG app)
-
-The task requires **runtime decisions**: fetch events, or enrich an artist, or retrieve music theory, or build a set — chosen dynamically based on what the user asks. A static chain decides the path at author-time; an agent decides at runtime. That branching logic is exactly what a ReAct agent does, and it's the reason a plain chatbot or a retrieval-only app can't solve this problem. See §Architecture decisions for the full reasoning.
-
-### Target users
-
-1. Berlin locals who go out weekly and want better-matched nights with less research effort
-2. Newcomers and tourists who love electronic music but don't know the scene
-3. Curious learners who want music education (genre history, theory, labels) without a formal course
+It is for three people: Berlin locals who want better-matched nights with less research, newcomers who love the music but do not know the scene, and curious listeners who just want to understand it.
 
 ---
 
-## How this was built — agentic coding methodology
+## 2. How it was built, in order
 
-This project was designed and built phase-by-phase using **Claude Code** (Anthropic's CLI) as the primary agentic coding tool. The methodology is not "ask the AI to write everything at once" — it is a structured 15-phase process where each phase had:
+The build ran as a sequence of stages, each with one deliverable and a test block that had to pass before the work was kept. The order was deliberate: infrastructure first, so that content and features could be tested against real behaviour as they were added, not after.
 
-- A **specific deliverable** (one module or concept)
-- A **chosen model** matched to what that phase required
-- A **reasoning budget** (thinking level) proportional to the decision complexity
-- A **test block** that ran before committing — no phase was merged until it passed
+1. **Configuration and provider client.** `config.py` loads every setting from the environment so nothing is hard-coded, and `llm_client.py` wraps three OpenAI-compatible providers behind one `chat()` call with caching, retry, and cost estimation. Built first because every other module depends on a working, observable model call.
+2. **Safety boundary.** `safety.py` (validation, rate limiting, a moderation classifier, input fencing) and `logging_config.py` (structured JSON logs). Built before the agent so that no later code path could reach the model without passing the gate.
+3. **Retrieval pipeline.** `ingest.py` chunks the knowledge base into ChromaDB, and `tools/music_kb.py` queries it with gap-honesty. Built before the knowledge content so the content could be tested against real retrieval as it was written.
+4. **The tools.** The seven domain tools in `tools/`, each independently importable with its own test block.
+5. **The agent.** `agent.py` composes the safety gate, the provider client, the prompts, the tools, and persistent memory into one `run_agent()` entry point. Built once its dependencies were each tested in isolation, so a failure here is a composition bug, not a unit bug.
+6. **Memory.** `memory.py` adds the LangGraph checkpointer and the SQLite taste profile.
+7. **The interface.** `app.py`, a thin Streamlit UI that routes to the agent or to a direct tool call per tab and renders the result.
+8. **The knowledge base, in two passes.** A first pass wrote seed content to validate the chunker and the metadata schema; a second pass deepened it with first-hand Berlin venue knowledge, door culture, harm reduction, genre theory, and label history.
+9. **Automation.** The in-app digest, the standalone Telegram digest on a GitHub Actions cron, and the KB enrichment pipeline.
 
-### The model strategy
+The knowledge base content came last on purpose. Domain depth is the one thing the tooling cannot scaffold, so the retrieval infrastructure was built first to test each piece of content against real queries as it landed.
 
-| Work type | Model | Thinking | Rationale |
-|---|---|---|---|
-| Scaffolding, API wrappers, CRUD plumbing | Claude Sonnet 4.6 | Off | One correct shape; no design decisions; spend nothing |
-| Schema design, retrieval logic, UI state flow | Sonnet | `think harder` | Hard to change once downstream code depends on it |
-| User-visible output quality: prompts, set-list | Claude Opus 4.7 | `think harder` | This is what reviewers read and users see; Opus earns its cost |
-| Agent orchestration (agent.py — the heart) | Claude Opus 4.7 | `ultrathink` | One wrong import or loop design breaks all 14 other phases |
+### Models used while building
 
-This is deliberate allocation, not "use the best model for everything." Sonnet built ~70% of the codebase; Opus was reserved for the three phases where reasoning quality directly determines output quality. The git history records which model built each component.
+Work was matched to a model rather than defaulting to the most capable one for everything. Scaffolding, API wrappers, and plumbing used a fast mid-tier model because there was one correct shape and no design decision to make. Schema design, retrieval logic, and UI state used the same model with a larger reasoning budget because those are expensive to change once downstream code depends on them. User-visible output, the prompts and the set lists, and the agent loop in `agent.py` used the most capable model, because a wrong decision there degrades everything a person actually reads or that every other component depends on. The git history records which work used which model.
 
-At runtime, the default model is **Claude Haiku 4.5** — the most reliably available tier on default OpenRouter accounts (see Known limitations). Sonnet and Opus are selectable in the UI sidebar; the default ensures the app works out of the box without OpenRouter privacy-policy configuration.
+### Lessons carried in from earlier iterations
 
-### The 15-phase build sequence
+This is a refined build, and the most useful input was the weaknesses earlier versions shipped with. Each lesson became an engineering decision here rather than a patch.
 
-Each phase produced one commit. The sequence is dependency-correct: each phase only uses files from earlier phases.
-
-| Phase | Files produced | What it does | Model | Thinking |
-|---|---|---|---|---|
-| 0 | `pyproject.toml`, `config.py`, `logging_config.py`, `app.py`, `CLAUDE.md` | Scaffold + config + logging + this doc | Sonnet | Off |
-| 1 | `knowledge_base/*.md`, `ingest.py` | 7 KB markdown files + ChromaDB ingestion pipeline | Sonnet | think |
-| 2 | `tools/music_kb.py` | RAG retrieval with per-tool allowlist + gap-honesty | Sonnet | think |
-| 3 | `safety.py` | Input validation + Mistral moderation + rate limiter + prompt fencing | Sonnet | think |
-| 4 | `llm_client.py` | OpenRouter + Ollama Cloud client, cache, retry, cost estimation | Sonnet | think |
-| 5 | `prompts/system.py`, `prompts/setlist.py`, `prompts/compare.py` | Agent persona, few-shot set-list examples, event-comparison reasoning rubric | **Opus** | think harder |
-| 6 | `tools/artists.py` | `enrich_artist`: Discogs primary + MusicBrainz fallback | Sonnet | Off |
-| 7 | `tools/events.py` | `find_events` (Resident Advisor GraphQL) + `compare_events` (LLM-ranked) | Sonnet | think |
-| 8 | `tools/setlist.py` | `build_setlist`: energy-arc tracklist + Deezer 30s previews + YouTube links | **Opus** | think harder |
-| 9 | `memory.py` | LangGraph `SqliteSaver` + SQLite taste profile + feedback loop | Sonnet | think harder |
-| 10 | `agent.py` | `run_agent()` via `langchain.agents.create_agent` — safety gate → checkpointer-backed memory → system prompt → five tools | **Opus** | ultrathink |
-| 11 | `automation/weekend_digest.py` | APScheduler job: Friday AM → Fri–Tue briefing → written to store | Sonnet | think |
-| 12 | `app.py` (full) | Streamlit UI: 4 tabs (Weekend/Learn/Crate agent + Go-International browse), model picker, sliders, tool-trace expander, event cards with RA links, ratings, cost display | Sonnet | think harder |
-| 13 | `tests/` | pytest suite: safety, tools, injection corpus (OWASP + jailbreaks), setlist | Sonnet | think |
-| 14 | `README.md`, LangSmith wiring | Observability, docs, Streamlit Cloud deploy prep | Sonnet | think |
-| 17 | `tools/web.py`, `automation/kb_enrich.py`, `tests/test_fixes.py`, `docs/KB_EXPANSION.md`; updates to `app.py`, `agent.py`, `config.py`, `llm_client.py`, `prompts/system.py`, `ingest.py`, `tools/events.py`, `automation/weekend_digest.py`, `pyproject.toml`, `requirements.txt` | Critical bug fixes (pysqlite3 Streamlit Cloud crash; Friday date resolution; EUR currency display). Mistral Large as second selectable chat model (reuses MISTRAL_API_KEY). Keyless web_search tool (DuckDuckGo, no API key). Reddit/web KB enrichment pipeline. Full UI copy pass (de-emoji, no em/en dashes, humanised text). Region filter regrouped (Benelux renamed; Eastern Europe renamed). Digest moved to Berlin tab with RA event links. 162 tests. | Sonnet | think harder |
-
----
-
-## Architecture decisions and WHY
-
-Each decision maps to a rubric criterion or reviewer fix. Nothing is arbitrary.
-
-### 1. ReAct agent over static chain or plain RAG
-
-**Decision:** LangGraph ReAct agent with runtime tool selection.
-
-**Why:** The application has three fundamentally different task types (event lookup, music education, set building) plus cross-cutting enrichment (`enrich_artist`). A static chain hard-codes the path at author-time. A ReAct agent reads the user's message and decides at runtime which tool(s) to call, in what order, and when it has enough information to answer. This is the architectural distinction between an *agent* and a *chatbot* — exactly the concept the Sprint 3 rubric tests.
-
-**Rubric mapping:** "Understanding core concepts — the learner can mention differences between different agent types" + "can explain function calling implementation clearly."
-
-### 2. LangGraph `SqliteSaver` for long-term memory
-
-**Decision:** LangGraph's built-in `SqliteSaver` checkpointer backed by SQLite, plus a separate taste-profile table in the same DB.
-
-**Why:** Streamlit reruns the entire script on every interaction, so in-memory state resets constantly. `SqliteSaver` persists conversation threads to disk keyed by `session_id` — the page can reload and the agent picks up exactly where it left off. The taste profile (preferred genres, loved/blocked artists, budget ceiling) is a separate concern: it's not a conversation history, it's a user model that improves with feedback. Two tables, one file, zero extra infra.
-
-**Rubric mapping:** Medium optional task #3 (long-term memory) + Hard optional task #4 (learns from feedback).
-
-### 3. ChromaDB + local sentence-transformers (no API cost for embeddings)
-
-**Decision:** `all-MiniLM-L6-v2` model runs locally; ChromaDB stores vectors on disk.
-
-**Why:** Embedding the knowledge base with an API (OpenAI, Cohere) adds cost, a network dependency, and a rate limit. The local model is free, runs offline, and is fast enough for a 7-file KB. Vectors persist across restarts in `data/chroma/`.
-
-### 4. Two LLM providers, five models, both OpenAI-API-compatible
-
-**Decision:** OpenRouter for Anthropic Claude (Sonnet, Haiku, Opus); Ollama Cloud for open-source (Gemma 3 27B, GPT-OSS 120B).
-
-**Why:** The cheatsheet and brief both require "the OpenAI API." OpenRouter is fully OpenAI-SDK-compatible (same client, same parameters) and routes to Anthropic behind one key — this satisfies the requirement while actually using Claude. Ollama Cloud (also OpenAI-compatible) adds open-source options via the same SDK call. `llm_client.py` routes on `model["provider"]` to select the right base URL and key. Five models is a principled, curated list — not a dropdown of 100 options — which is easier to explain and defend.
-
-**Rubric mapping:** "OpenAI API" requirement + Medium optional task #9 (multi-model support).
-
-### 5. Mistral moderation over regex for injection detection
-
-**Decision:** Call the Mistral moderation API, gate on per-category probability scores.
-
-**Why:** A regex-based denylist (matching "ignore previous instructions") is easily bypassed — obfuscation, zero-width characters, paraphrasing. A classifier assigns probabilities across harm categories (violence, self-harm, illegal activity, etc.) regardless of surface form. Score-based gating is the OWASP LLM01 mitigation; substring matching is explicitly called out as insufficient in security literature. This was a Sprint 1 deduction; it won't be here.
-
-**Rubric mapping:** "Appropriate security considerations" (technical implementation criterion) + OWASP LLM01.
-
-### 6. Per-tool allowlists, not blacklists, for retrieval scope
-
-**Decision:** `explain_music` accepts an `allowed_doc_types` list; if provided, only chunks with matching metadata are retrieved.
-
-**Why:** Blacklists enumerate what to exclude — they miss anything not anticipated. Allowlists enumerate what to include — they're closed by default. For a tool that should only answer from the music KB (not from user-injected content or stray chunks), an allowlist is the correct model. This was a Sprint 2 deduction.
-
-### 7. Gap-honesty: the agent says when it doesn't know
-
-**Decision:** `explain_music` returns `grounded: False` when similarity is below threshold. `find_events` returns an empty list with a logged status when RA's endpoint fails. The agent's system prompt instructs it to surface these signals rather than invent an answer.
-
-**Why:** An agent that fabricates events or invents music facts is worse than useless — it's misleading. Explicit gap-honesty (saying "no events found" or "this isn't in my knowledge base") is both the correct engineering choice and the honest-limitations style that both previous reviewers praised.
-
-### 8. uv + pyproject.toml + committed lockfile
-
-**Decision:** `uv` manages dependencies; `pyproject.toml` has sensible compatible-range pins; `uv.lock` is committed.
-
-**Why:** Lower-bound-only pins (`requests>=2.0`) allow any later version, including breaking ones. The lockfile captures exact versions that were tested, making the build reproducible. `uv` is faster than pip, handles virtual environments automatically, and the `uv run` command means contributors don't need to manually activate an environment. This was a Sprint 1 deduction.
-
-### 9. Modular structure: no monolithic `app.py`
-
-**Decision:** Separate modules for each concern — `config.py`, `logging_config.py`, `safety.py`, `llm_client.py`, `memory.py`, `agent.py`, `prompts/`, `tools/`, `automation/`. `app.py` is thin UI routing only.
-
-**Why:** A top-to-bottom `app.py` with 800 lines is untestable and unmaintainable. Each module here is independently importable and has a `if __name__ == "__main__"` test block. The test suite (`tests/`) can mock individual modules without touching the UI. This was deducted in both Sprint 1 and Sprint 2.
-
-### 10. LangSmith for observability
-
-**Decision:** LangSmith traces all LLM and tool calls when `LANGCHAIN_TRACING_V2=true`.
-
-**Why:** The `.env` already contained LangSmith keys. It integrates natively with LangChain/LangGraph (zero extra code — just environment variables). Every agent run appears in the LangSmith dashboard with token counts, latency, and tool traces — satisfying the "metrics/observability" requirement that was deducted in Sprint 2.
-
----
-
-## Reviewer fix-list — Sprint 1 + 2 deductions and their exact mitigations
-
-| Deduction (sprint) | Mitigation | Where |
+| Lesson | What this version does | Where |
 |---|---|---|
-| No rate limiting (S1) | `RateLimiter` class with configurable window + count | `safety.py` |
-| Regex-only injection filter (S1) | Mistral moderation API, score-based gating | `safety.py` |
-| No tests (S1) | `pytest` parametrized suite, all offline | `tests/` |
-| Monolithic `app.py` (S1) | `main()` entry point + small helpers; all logic in separate modules | `app.py`, all modules |
-| No logging (S1) | structlog JSON to stdout on every call | `logging_config.py`, all modules |
-| Lower-bound-only pins (S1) | Compatible-range pins + committed `uv.lock` | `pyproject.toml` |
-| Sparse commits (S2) | One commit per phase, from the first line of code | git history |
-| KB hard-coded in repo (S2) | ChromaDB vector store + SQLite for profile/sessions/digests | `data/` |
-| No observability/metrics (S2) | LangSmith tracing (tokens, latency, tool traces) | `llm_client.py`, `agent.py` |
-| Hard-coded models/URLs (S2) | Everything in `config.py` loaded from `.env` | `config.py` |
-| Retrieval used blacklists (S2) | Per-tool `allowed_doc_types` allowlists | `tools/music_kb.py` |
-| No injection test suite (S2) | OWASP corpus + jailbreaks + false-positive checks | `tests/test_injection.py` |
-| No caching (S2) | In-memory cache keyed on (model, messages hash) | `llm_client.py` |
-| Wrong `create_react_agent` import (S2) | `from langchain.agents import create_agent` — the langchain 1.x successor in the same canonical module; `langgraph.prebuilt` is still the wrong path | `agent.py` |
-| Incomplete type hints (S2) | Full type hints on every function signature | all modules |
+| A regex denylist for prompt injection is trivially bypassed | A moderation classifier with score-based gating across harm categories | `safety.py` |
+| No rate limiting leaves the door open to abuse | A configurable rolling-window limiter per session | `safety.py` |
+| Retrieval blacklists miss anything unanticipated | Per-tool allowlists, closed by default | `tools/music_kb.py` |
+| A single monolithic UI module is untestable | Small modules, each independently importable with a test block | every module |
+| No tests and no logging make regressions invisible | A real pytest suite and structured JSON logging on every call | `tests/`, `logging_config.py` |
+| Lower-bound-only dependency pins drift and break | Compatible-range pins and a committed lockfile | `pyproject.toml`, `uv.lock` |
+| No observability means no insight into cost or latency | LangSmith tracing on every LLM and tool call | `llm_client.py`, `agent.py` |
+| Hard-coded models and URLs are brittle | Everything loads from the environment | `config.py` |
 
 ---
 
-## Optional tasks implemented
+## 3. Architecture decisions, and the alternative each one rejects
 
-**Hard tasks (target: 1 primary + extras):**
-- ✅ **#1 Agentic RAG** — `explain_music` is invoked by the agent at runtime, not statically. The agent decides when to retrieve. *(primary hard)*
-- ✅ **#2 LLM observability** — LangSmith dashboard for latency, token usage, model distribution
-- ✅ **#4 Learns from user feedback** — thumbs-up/down updates the SQLite taste profile; future recommendations improve
-- ✅ **#7 Deploy to cloud** — Streamlit Community Cloud
+**A ReAct agent, not a static chain or plain retrieval.** The app has three task shapes (event lookup, music education, set building) plus cross-cutting enrichment. A static chain fixes the tool path when the code is written; a retrieval-only app can only answer from documents. A ReAct agent reads the message and decides at runtime which tools to call, in what order, and when it has enough to answer. That runtime branching is the whole reason a chain or a plain RAG app cannot solve this well.
 
-**Medium tasks (target: 2 primary + extras):**
-- ✅ **#3 Long-term memory** — `SqliteSaver` persists conversations + SQLite taste profile across sessions *(primary medium)*
-- ✅ **#4 External-API tool** — five external integrations: RA GraphQL, Discogs, MusicBrainz, Deezer, Ollama Cloud *(primary medium)*
-- ✅ **#1 Token usage and cost display** — per-query tokens + cost estimate in Streamlit sidebar
-- ✅ **#2 Retry logic** — exponential-backoff retry on transient LLM/API errors
-- ✅ **#6 Caching** — in-memory cache on repeated LLM calls
-- ✅ **#7 Feedback loop** — user ratings stored; taste profile updated
-- ✅ **#9 Multi-model support** — OpenRouter (Anthropic) + Ollama Cloud (Gemma 3, GPT-OSS); model picker in UI
+**Two surfaces deliberately bypass the agent.** The Rave Set Builder always wants exactly one fully enriched set, and Beyond Berlin always wants exactly one city's listings. Routing a single deterministic call through a ReAct loop adds latency, adds cost, and adds a real failure mode where a small model decides not to call the tool. Calling the function directly is the honest, reliable choice. Picking the right altitude per surface, agent or retrieval or direct call, is the architecture, not a default.
 
-**Easy tasks:**
-- ✅ **#2 Agent personality** — configurable tone (friendly / concise / formal) passed into system prompt
-- ✅ **#3 Model picker** — sidebar dropdown from `AVAILABLE_MODELS`
-- ✅ **#4 Temperature + top-p sliders** — sidebar controls
+**LangGraph SqliteSaver for memory.** Streamlit re-runs the whole script on every interaction, so in-memory state resets constantly. The SqliteSaver checkpointer persists conversation threads to disk keyed by session and per tab, so a reload resumes exactly where it left off. The taste profile is a separate concern, a user model that improves with feedback, so it lives in its own SQLite table. Two tables, one file, no extra infrastructure, which is the right weight for a single-user app.
+
+**ChromaDB with local embeddings.** The knowledge base is embedded with a local sentence-transformers model (`all-MiniLM-L6-v2`). A hosted embedding API would add per-call cost, a network dependency, and a rate limit for no benefit at this corpus size. Local embedding is free, offline, and fast enough, and the vectors persist on disk. The ingestion pipeline is idempotent, so re-running it after a KB edit is safe.
+
+**Heading-aware, overlapped chunking.** Retrieval quality lives or dies on chunking. `ingest.py` splits each markdown file at its section headings, prefixes every chunk with a breadcrumb drawn from the file title and the nearest heading, and overlaps adjacent chunks within a section. The breadcrumb puts the topic words inside the chunk, so a chunk about a door policy still carries the word Berghain even when that word only appeared in the heading. The overlap keeps a fact retrievable when it falls across a chunk boundary. A naive fixed-size splitter loses both, which is why generic chunking returns the wrong section for a query like "Berghain door policy".
+
+**Three providers behind one client.** `llm_client.py` routes to OpenRouter, Mistral, or Ollama Cloud by the model's provider, all through the OpenAI SDK shape. One call site, no provider branching scattered through the code, plus an in-memory cache, exponential-backoff retry, and cost estimation.
+
+**A moderation classifier, not regex, for injection defence.** A denylist is bypassed by obfuscation, paraphrasing, or zero-width characters. A moderation API scores harm categories regardless of surface form, and the gate is score-based. On top of that, user input is fenced as data and the system prompt is told never to follow instructions inside fenced content. Defence in depth, not a single string match.
+
+**Gap-honesty everywhere.** `explain_music` returns `grounded=False` below a similarity threshold, `find_events` returns an empty list with a logged status when Resident Advisor fails, and `web_search` returns `grounded=False` on any failure. The agent surfaces these signals instead of inventing an answer, because a fabricated party or a made-up label is worse than an honest "I do not have that".
+
+**House typography enforced in code.** Models ignore the instruction to avoid em dashes often enough that `textfmt.humanize()` normalises every piece of user-facing model output (chat answers, set-list reasons, event rankings, the Telegram briefing) to straight quotes and plain punctuation. The rule holds regardless of which model wrote the text.
+
+**Clean event data from a messy source.** Resident Advisor returns full ISO timestamps and inconsistent address strings. `tools/events.py` parses the timestamp into a readable date and time, normalises the address into one line, and prefers the curated registry address for known Berlin venues. The UI never shows a raw timestamp.
 
 ---
 
-## Module map
+## 4. When the project uses prompt engineering, retrieval, or an agent
+
+All three, layered on purpose.
+
+| Technique | Where | Why |
+|---|---|---|
+| Prompt engineering | `prompts/` | Shapes every generation: the persona, the few-shot energy-arc examples, the ranking guide. Author-time, single step. |
+| Retrieval (RAG) | `tools/music_kb.py` | Grounds music answers in the curated KB. Used when facts must be sourced, not invented. |
+| Agent (ReAct) | `agent.py`, the Raves in Berlin and Rave Culture & Music tabs | Multi-step reasoning with runtime tool selection. |
+| Direct tool call | the Rave Set Builder and Beyond Berlin tabs | Single, well-defined work where a deterministic call beats asking a model to decide to make it. |
+
+---
+
+## 5. Runtime models
+
+The default runtime model is **Claude Haiku 4.5** on OpenRouter: the fastest and cheapest tier, and the one model that works on a default OpenRouter account without privacy-policy configuration, so a fresh clone runs out of the box. **Mistral Large** is the second option and reuses the same key that powers the moderation call. **GPT-OSS 120B** on Ollama Cloud is the third, an open-weights model that proves the same client routes to a third provider unchanged; it needs `OLLAMA_API_KEY`. All three are defined in `config.py`; the picker is intentionally limited to these three so the surface stays honest about what is wired and tested.
+
+---
+
+## 6. Module map
 
 ```
-rave-atlas/
-├── app.py                  Thin Streamlit UI; main() + tab routing only
-├── agent.py                LangGraph ReAct agent assembly + run_agent()
-├── config.py               All env-var settings; no hard-coded values
-├── llm_client.py           OpenRouter + Ollama Cloud client; cache, retry, cost
-├── logging_config.py       structlog JSON setup; get_logger(name) helper
-├── memory.py               SqliteSaver checkpointer + SQLite taste profile
-├── safety.py               validate_input, moderate, RateLimiter, fence
-├── ingest.py               Chunks KB markdown → ChromaDB (run once / on update)
-├── prompts/
-│   ├── system.py           Agent system prompt (persona, tool routing, tone)
-│   ├── setlist.py          SETLIST_PROMPT with 2–3 few-shot energy-arc examples
-│   └── compare.py          COMPARE_PROMPT — event-ranking reasoning rubric
-├── tools/
-│   ├── music_kb.py         explain_music (RAG, allowlist, gap-honesty)
-│   ├── events.py           find_events (RA GraphQL) + compare_events (LLM)
-│   ├── artists.py          enrich_artist (Discogs → MusicBrainz fallback)
-│   └── setlist.py          build_setlist (LLM energy arc + Deezer + YouTube)
-├── automation/
-│   ├── weekend_digest.py   APScheduler Fri-AM job → Fri–Tue briefing → SQLite (local/in-app)
-│   └── weekend_telegram.py Standalone Fri-AM Berlin digest → Telegram (run by GitHub Actions cron)
-├── .github/workflows/
-│   └── weekend-digest.yml  Cron (Fri 07:00 UTC) → uv run weekend_telegram (app-independent)
-├── knowledge_base/         Curated markdown: genres, history, labels, theory
-│   ├── genres_techno.md
-│   ├── genres_house.md
-│   ├── genres_psytrance.md
-│   ├── genres_dubstep.md
-│   ├── berlin_scene_history.md
-│   ├── labels.md
-│   └── track_anatomy.md
-├── data/                   Gitignored: chroma/, rave_atlas.db
-└── tests/
-    ├── test_safety.py      Validation, rate limit, moderation (mocked)
-    ├── test_tools.py       explain_music, enrich_artist, find_events (mocked APIs)
-    ├── test_injection.py   OWASP corpus + jailbreaks + false-positive checks
-    └── test_setlist.py     build_setlist output shape (mocked LLM)
+berlin-rave-atlas/
+  app.py                  Thin Streamlit UI, four tabs and routing only
+  agent.py                LangGraph ReAct agent assembly + run_agent()
+  config.py               All settings from environment, no hard-coded values
+  llm_client.py           OpenRouter + Mistral + Ollama client, cache, retry, cost
+  logging_config.py       structlog JSON setup
+  memory.py               SqliteSaver checkpointer + SQLite taste profile + digests
+  safety.py               validate_input, moderate, RateLimiter, fence
+  textfmt.py              humanize(), house typography on all model output
+  ingest.py               Heading-aware, overlapped KB chunking into ChromaDB
+  prompts/
+    system.py             Agent persona, date resolution, tool-routing rules
+    setlist.py            Set-list prompt with few-shot energy-arc examples
+    compare.py            Event-ranking reasoning guide
+  tools/
+    music_kb.py           explain_music, RAG with allowlist and gap-honesty
+    events.py             find_events (RA GraphQL, city-aware) + compare_events
+    artists.py            enrich_artist, Discogs primary, MusicBrainz fallback
+    setlist.py            build_setlist, LLM arc + Deezer previews + YouTube
+    clubs.py              find_club, deterministic Berlin club registry lookup
+    club_registry.py      The Berlin club table (addresses, official links)
+    web.py                web_search, keyless DuckDuckGo fallback, gap-honest
+  automation/
+    weekend_digest.py     In-app APScheduler digest (local and demo use)
+    weekend_telegram.py   Standalone reason-first Telegram digest (GitHub Actions cron)
+    kb_enrich.py          Reddit and web KB enrichment pipeline
+    club_scraper.py       Optional official-site event scraper
+  .github/workflows/
+    weekend-digest.yml    Cron that runs the Telegram digest, app-independent
+  knowledge_base/         27 curated markdown files, ingested to ChromaDB (351 chunks)
+  data/                   Gitignored, chroma/ and the SQLite database
+  tests/                  pytest suite, 254 tests, offline by default
 ```
 
 ---
 
-## Running locally
+## 7. The seven tools
 
-```bash
-# 1. Clone and enter the repo
-git clone <your-repo-url>
-cd rave-atlas
+The agent picks among these at runtime.
 
-# 2. Copy secrets
-cp .env.example .env
-# Edit .env — fill in OPENROUTER_API_KEY, OLLAMA_API_KEY, DISCOGS_TOKEN,
-#              MISTRAL_API_KEY, LANGSMITH_API_KEY
-#
-# OpenRouter note: if you see a 404 on model calls, visit
-# openrouter.ai/settings/privacy and allow providers. The default
-# model (Haiku 4.5) works without this change.
-
-# 3. Install dependencies (uv manages the virtualenv automatically)
-uv sync
-
-# 4. Build the knowledge base (run once, or after editing knowledge_base/*.md)
-uv run python ingest.py
-
-# 5. Launch the app
-uv run streamlit run app.py
-
-# 6. Run the test suite
-uv run pytest
-```
+1. `explain_music` retrieves grounded context from the knowledge base, with an optional allowlist of doc types.
+2. `find_events` fetches live events from Resident Advisor and returns clean, normalised event data.
+3. `compare_events` ranks fetched events against the taste profile with plain-language reasoning, not numeric scores.
+4. `enrich_artist` pulls labels, genres, and releases from Discogs, falling back to MusicBrainz.
+5. `build_setlist` generates an energy-arc set list with Deezer previews and YouTube links.
+6. `find_club` looks up a Berlin venue's official site, events page, and address from a curated registry, a deterministic fact lookup rather than a vector search.
+7. `web_search` is the keyless fallback for current facts outside the knowledge base, with results treated as untrusted data.
 
 ---
 
-## When this project uses prompt engineering vs RAG vs an agent
+## 8. The knowledge base
 
-This is an explicit Sprint 3 rubric question. The project uses all three, deliberately layered:
+The `knowledge_base/` markdown is Berlin-deep and music-deep on purpose. An earlier iteration carried thin one-paragraph primers for many European cities; they were removed because a 150-word file on a city scores worse than a live web search and dilutes the Berlin retrieval that is the point of the app. What remains is genuinely opinionated and specific: venue knowledge, party series, door culture, harm reduction, genre theory, and label history. A deep, narrow KB beats a broad, thin one for this use case. The pipeline is idempotent, so re-running `uv run python ingest.py` after any edit is safe.
 
-| Technique | Where used | Why |
+---
+
+## 9. Conventions for a future session
+
+- Every setting comes from `config.py`. Do not hard-code a model id, URL, price, or threshold anywhere else.
+- Every user-facing string that a model produced must pass through `textfmt.humanize()`. No em dashes or en dashes anywhere, in code, in the UI, or in the knowledge base.
+- Every module keeps its `if __name__ == "__main__"` test block runnable in isolation.
+- Tools return a gap signal rather than inventing data. Preserve that.
+- After any knowledge base edit, re-run `uv run python ingest.py`, then `uv run pytest`.
+
+---
+
+## 10. Known limitations and where they go next
+
+| Limitation | Impact | Path forward |
 |---|---|---|
-| **Prompt engineering** | `prompts/system.py`, `prompts/setlist.py`, `prompts/compare.py` | Shapes every LLM response — the agent's persona, its few-shot set-list examples, and the structured reasoning rubric for comparing events. Applied at author-time to a single generation step. |
-| **RAG** | `tools/music_kb.py` → `explain_music` | Grounds music-theory answers in the curated KB. Used when facts must be sourced (not invented) and the answer depends on a static, curated corpus. |
-| **Agent (ReAct)** | `agent.py` → `run_agent()`; Weekend + Learn tabs | Used where the task requires multi-step reasoning with runtime tool selection. The agent decides which of the five tools to call based on the user's request — a decision that cannot be made at author-time. |
-| **Direct tool call (no agent)** | Crate tab → `build_setlist`; Go-International tab → `find_events` | Used where the task is a single, well-defined retrieval/generation with no branching. Crate always wants exactly one fully-enriched set; International always wants exactly one city's listings. Routing these through a ReAct loop adds latency, cost, and a failure mode (the model may decline to call the tool — the original "second set-list came back as plain text" bug) for zero benefit. Calling the tool directly is the honest, reliable choice. |
-
-RAG alone could power the Learn tab. Prompt engineering alone could build a fixed chatbot. Only the agent can handle "find me hypnotic techno this Friday under €20 near Kreuzberg" — which requires fetching events, enriching artists, comparing against the taste profile, and synthesising a recommendation in one turn. But the inverse discipline matters too: **knowing when *not* to reach for the agent.** Crate and Go-International are deliberately agent-free because a deterministic call is more reliable than asking a model to decide to make it. Picking the right altitude per surface — agent, RAG, prompt, or plain function — is the architecture, not a default.
-
----
-
-## Known limitations and migration paths
-
-| Limitation | Impact | Migration path |
-|---|---|---|
-| Resident Advisor has no official public API | `find_events` calls an unofficial GraphQL endpoint — it may change or break | Use a maintained third-party scraper (e.g., Apify's RA template) or the official RA affiliate programme if/when available |
-| Multi-city coverage is RA-bounded | The agent core (Weekend/Learn/Crate) is Berlin-only by design — that's where the KB, persona, and depth are real. The **Go-International** tab exposes `find_events` for other cities (resolved live via RA's `areas(searchTerm)` query), but RA's listings are dense only for major scenes (Berlin, Hamburg, Cologne, Amsterdam, London, Paris). Small towns (Aachen, Bonn) return little or nothing — the tab says so honestly rather than faking results. | Add **Ticketmaster Discovery API** (free, official, broader pan-EU ticketed coverage) as a second source merged + deduped with RA — `find_events` is already city-parameterised for this seam. Bandsintown can add artist-tour lookups. |
-| Scheduled automation can't live in the Streamlit process | Streamlit Community Cloud sleeps the app when idle, so the in-app APScheduler digest won't fire on a real Friday-morning schedule, and SQLite/Chroma are ephemeral across restarts. | The Telegram weekend digest is decoupled into `automation/weekend_telegram.py`, fired by a **GitHub Actions cron** (`.github/workflows/weekend-digest.yml`) that runs whether or not the app is awake. The in-app APScheduler + "generate now" button are kept for local/demo use. For durable user memory, migrate SQLite → Firebase/Postgres. |
-| Spotify audio-features API deprecated (Nov 2024) | Cannot pull BPM/energy/danceability programmatically | Deezer's public API still works; AcousticBrainz is an open alternative |
-| SQLite for memory is local-only | Won't work on stateless cloud deployments without a writable volume | Migrate to Firebase Realtime DB (direct drop-in for the profile table) or PostgreSQL + pgvector (replaces both SQLite and ChromaDB) |
-| Knowledge base is static markdown | KB must be manually updated as genres evolve | Add an admin UI for KB editing + re-ingestion trigger |
-| Ollama Cloud model availability | `gemma3:27b` and `gpt-oss:120b` availability depends on Ollama Cloud's hosted catalogue | Fall back to OpenRouter equivalents if Ollama Cloud changes its model roster |
-| OpenRouter data-policy guardrail | Some Anthropic models (notably `claude-sonnet-4.6`) return 404 on accounts with restrictive default privacy settings | Visit openrouter.ai/settings/privacy and allow providers; or leave `DEFAULT_MODEL` at `anthropic/claude-haiku-4.5` (the default — always unblocked) |
-| DuckDuckGo web search has no SLA | `web_search` may return empty results when rate-limited or blocked | Replace with a Serper or SerpAPI key for consistent web results |
-| pysqlite3 Streamlit Cloud dependency | The sqlite3 swap must be the very first code in `app.py`; adding any import before it will reintroduce the AttributeError crash | The pysqlite3-binary wheel is Linux-only (correct marker in requirements); never move the swap block |
+| Resident Advisor has no official public API | `find_events` uses an unofficial GraphQL endpoint that can change | A maintained third-party source or the RA affiliate programme |
+| Agent depth is Berlin-only by design | Other cities are browse-only in Beyond Berlin | Add city KB files and run the enrichment pipeline |
+| SQLite is local | Profiles and threads reset on a stateless cloud restart | Firebase or Postgres |
+| ChromaDB seeds at runtime | A cold start of roughly half a minute on the first cloud load | Pre-build the vector store or use a hosted vector DB |
+| The in-app scheduler cannot run on a sleeping app | The Friday digest would not fire reliably in-process | The Telegram digest runs from a GitHub Actions cron instead |
+| DuckDuckGo web search has no SLA | `web_search` can return empty under heavy use | Swap in a keyed search provider |
 
 ---
 
-## Innovative use cases and workflows
+## 11. What is next, an engagement layer
 
-These are real, tested conversation flows that demonstrate the agent and tools working together. A reviewer or hiring manager reading this should understand what the app is actually capable of beyond the feature list.
-
-**1. The first-timer crash course.** Ask "I've never been to a Berlin techno club, where do I start?" The agent explains the scene (Rave Wiki), names entry-level venues and what the door policy is like (KB), and offers to find an event this weekend that suits a newcomer (find_events + compare_events).
-
-**2. The genre-matching night planner.** "I love Four Tet and Floating Points, what's on this weekend?" find_events fetches Berlin events, compare_events ranks them against a taste profile that has been built up from previous ratings, and the agent explains why the top pick fits.
-
-**3. The era-specific night hunt.** "I want something with a 90s Detroit techno sound tonight." RA has no era filter. The agent fetches events for today, reasons over lineups and genre tags to surface the closest match (a classic techno night, a vinyl-only party), and tells you honestly that the era match is inferred from the lineup, not guaranteed.
-
-**4. The budget-maximised weekend.** "What's free or under 10 euros this weekend, and is any of it actually worth going to?" Filtered event fetch, ranked honestly against profile, no minimum-viable-answer padding.
-
-**5. The before-you-go artist prep.** "Tell me about Surgeon before I see him tonight." enrich_artist pulls label history (Downwards Records, Tresor), genre lineage (Birmingham industrial techno), and notable releases from Discogs. You arrive knowing what to expect.
-
-**6. The party set builder.** "Build me a 3-hour midnight set for a house party, deep and melodic, 20 tracks." Returns a full energy arc from 2/10 at opening to 8/10 at peak, with artist, title, reason per track, and 30-second Deezer previews plus YouTube links.
-
-**7. The comedown set.** "It's 7am, I just got home from Berghain, build me something ambient for an hour." Energy arc 5 to 1, six tracks, Burial-adjacent textures. The model understands this is the end of a night, not the start.
-
-**8. The genre learning ladder.** "Explain the difference between minimal techno, industrial techno, and EBM." The Rave Wiki retrieves from the curated KB and returns specific artists, BPM ranges, hardware signatures, and YouTube links so you hear the distinctions rather than just read them.
-
-**9. The label deep-dive.** "Tell me about Ostgut Ton, who records on it, and is anyone from that label playing this weekend?" KB for label history, find_events for the weekend, enrich_artist to check lineups. Three tools, one turn.
-
-**10. The multi-city Europe trip.** Use the Rave Parties in Europe tab to browse Amsterdam, Berlin, and Prague across the same week. Each city shows live RA listings. Plan three nights in three cities without opening three browser tabs.
-
-**11. The Friday Telegram digest.** Set up the GitHub Actions cron and every Friday morning your phone gets a Berlin weekend briefing with each event name linked to its RA page. The app does not need to be open.
-
-**12. The knowledge base for your own city.** Edit `automation/kb_enrich.py` with the subreddits and web sources for your local scene, run it, and the Rave Wiki now covers your city's clubs, labels, and history. The ingestion pipeline is idempotent — re-run it any time.
-
-**13. The crate-digger's reference.** "I found a white label from roughly 1994, dark industrial kick, 138 BPM, one-bar loop. What label era is this?" The Rave Wiki explains the Tresor/Underground Resistance sound, the Roland 909 signature, and the Detroit-to-Berlin pipeline that defined that production aesthetic.
-
-**14. The touring DJ homework.** "I'm playing a warm-up set at Fabric next month, it's a deep house night. Prep me." web_search for recent Fabric lineups (KB gap), explain_music for deep house theory, build_setlist for a reference arc. All cited.
-
-**15. The regular's weekly ritual.** Rate events after attending. The agent updates your taste profile in SQLite. After a month the ranking is personal: if you have consistently rated melodic nights up and hard industrial nights down, the agent reflects that without you having to state it every time.
-
-**16. The producer's structural reference.** "What BPM range does a Tresor-style techno track sit at, and how is it structured?" The KB has dedicated track anatomy content covering intro length, build patterns, drop timing, and typical arrangement lengths at club BPMs.
-
-**17. The venue comparison.** "Compare Watergate and about blank for a melodic techno night — vibe, sound system, door policy." The KB holds first-hand venue commentary, not press-release descriptions. The agent names the tradeoffs honestly.
-
-**18. The scene history explainer.** "How did Berlin become the world centre of techno after reunification?" Full Rave Wiki answer: Tresor founding in 1991, the geography (Mitte warehouses, Friedrichshain power stations), the East-West cultural collision, the role of Detroit imports (Jeff Mills, Robert Hood) in shaping the Berlin sound.
-
-**19. The partner prep.** "My partner loves this music but I know nothing, what should I understand before our night out?" Casual-tone introduction to the genre, the culture, the door etiquette, and one specific venue recommendation, without condescension.
-
-**20. The KB expansion workflow.** Run `uv run python automation/kb_enrich.py --dry-run` to preview Reddit and web content. Review the draft markdown files in `knowledge_base/community/`. Edit for accuracy. Run `uv run python ingest.py` to push the new content into ChromaDB. The Rave Wiki now covers whatever you added — permanently, until the next container restart on cloud.
-
----
-
-## Phase 20-22 — Capstone Extension: Games and Engagement
-
-The core app (Phases 0-17) is a utility: it finds events, teaches music, and builds sets. The capstone extension adds a second mode — engagement. The goal is retention: people who come back daily or weekly, not just when planning a night out.
-
-### Architecture decision: same app, same backend, new tab
-
-All four features below share the same backend: ChromaDB, SQLite, the LangGraph agent, and the taste profile. A separate app would mean two separate profiles and two knowledge bases to maintain. One new "Play" tab in the existing Streamlit app is the right structure — same data, new surface.
-
-The games only work because the KB has real depth. A shallow knowledge base produces a game that feels generic and breaks in two rounds. This is why the capstone follows the KB research phase, not the other way around.
-
-### Phase 20 — Scene Passport
-
-**What it is in one sentence:** a digital stamp book of every club you have been to, which makes the agent treat you differently based on your real experience rather than assuming you are a newcomer every time.
-
-**How it works:**
-- New SQLite table: `(user_id, venue_name, city, country, date_visited)`
-- A check-in UI panel: pick a venue from the known list or type one, add an optional date, save it
-- The agent reads the passport before every recommendation: if Tresor and Berghain are checked in, it skips the basics and goes straight to the nuance
-
-**Why the data model matters:** the passport table is the foundation for everything that follows. Phase 21 games read it to calibrate difficulty. The long-term map visualization is just a rendering layer on top of rows that already exist.
-
-**Long-term vision (not Phase 20):** a world map with a pin for every venue across every city the user has ever visited. Ravers travel specifically to go to clubs — Berlin, Ibiza, Tokyo, Melbourne, New York — and there is no good app for recording that journey. The data model here is already correct for it; the map is a front-end layer added later without schema changes.
-
-**Files touched:** `memory.py` (new table and helpers), `app.py` (new panel), `agent.py` (passport context injected into system prompt alongside the taste profile).
-
-### Phase 21 — The Promoter Game and Era Challenge ("Play" tab)
-
-**The Promoter Game in one sentence:** you book 3 real DJs for a real Berlin venue and the agent scores your lineup on musical logic, scene credibility, and whether the energy arc makes sense.
-
-**How the game works:**
-- The game gives you a brief: "Tresor, Saturday midnight, 300 capacity, 15 euro door, hypnotic techno"
-- You pick a warm-up DJ, a headliner, and a closing act — all real artists
-- The agent judges three dimensions: (1) genre coherence across all three acts, (2) whether these artists would realistically share a bill given their label affiliations and scene tier, (3) whether the energy arc is correct (the heaviest act should not open)
-- Score 1-10 per dimension with specific reasoning, not just a number
-- Replayable: a different venue, genre, and budget each round
-
-**Why the agent is a credible judge:** it knows that a Klockworks-aligned act and a BPitch-signed artist are not natural co-headliners, that Surgeon's industrial sound does not fit a Watergate warm-up slot, that a closing DJ should be lighter than the peak act. A generic LLM without the scene KB cannot make those calls.
-
-**The Era Challenge in one sentence:** the agent picks a year from Berlin techno history and you name 3 artists or tracks from that year — pub quiz format, two minutes, streak mechanic for daily habit.
-
-**How it works:**
-- Agent picks a year from a curated set (1991, 1993, 1996, 1999, 2002, 2006, 2010, 2014, 2018)
-- User names 3 artists or tracks they associate with that year
-- Agent checks against KB knowledge: what was actually prominent, what you got right, what you missed and why it mattered historically
-- Streak counter in SQLite tracks consecutive correct rounds to build a daily-return habit
-
-**Files touched:** new `prompts/games.py` with two structured prompts (one per game), a "Play" tab in `app.py`, simple game-state tracking in SQLite (scores, streaks, rounds played per game type).
-
-### Phase 22 — The Doorman
-
-**What it is in one sentence:** you play the Berghain Türsteher — the agent describes a fictional clubber in three sentences and you decide in or out, then learn whether a real doorman would agree and why.
-
-**Why it is the most shareable feature in the roadmap:** the Berghain door is already internet-famous. Everyone who knows anything about Berlin techno has heard of it. A game that explains the real reasoning — not a random yes/no — gives people something to screenshot, share, and argue about.
-
-**Why this phase is blocked on KB research:** the game only feels authentic if the agent's judgment is grounded in real Berghain door culture. The relevant knowledge is specific: Sven Marquardt's philosophy (he is the head Türsteher and wrote a memoir, *The Night Is Life*), the attitude-vs-appearance distinction (it is not primarily about what you wear), why groups of six are harder than pairs, why speaking English loudly in the queue is a bad signal, what changes between Saturday midnight and Sunday morning crowds. Without this in the KB, the agent defaults to generic "wear black, go alone" answers and the game breaks immediately for anyone who actually knows the scene.
-
-**Blocker:** research and ingest the Berghain cultural KB content before starting this phase. Sources: Sven Marquardt interviews, the memoir itself, r/berghain detailed threads (not the memes), long-form journalism (RA, Vice, The Guardian). See the KB research prerequisites below.
-
-### KB research prerequisites for the capstone
-
-The games are knowledge-quality-gated. This is the research work needed before Phase 22 specifically, and that improves Phase 21 quality throughout:
-
-| Content area | Primary sources | Why it matters |
-|---|---|---|
-| Berghain door culture | Sven Marquardt memoir, RA and Vice long-reads, r/berghain detailed threads | Required before Phase 22 can be built |
-| Rave etiquette and culture from scratch | DanceSafe, RA features, r/aves, r/techno | Improves Rave Wiki for first-timer and tourist use cases |
-| Harm reduction | DanceSafe, The Loop UK, TripSit combination chart, checkit! Vienna, Berlin Senate drug-checking programme | Allows the agent to answer harm-reduction questions accurately and responsibly within the app's stated scope |
-| City scene primers (top 15 cities only) | RA city guides, Boiler Room sets filtered by city, Mixmag scene features | Thin anchors for the Explore tab's agentic city briefing; not deep files for 100 cities |
-| Scene history depth | Simon Reynolds *Energy Flash*, *Der Klang der Familie* (Berlin oral history), RA retrospectives | Improves Era Challenge accuracy and Rave Wiki depth for scene-history questions |
-
-**Format for handing research back for ingestion:** one markdown file per topic, clear H2/H3 headings (they become chunk boundaries in ChromaDB), bullet-summarized facts not copy-pasted prose (copyright and chunking quality), specific names and BPMs and years not vague descriptions. Add `doc_type`, `scope`, and `source` as frontmatter on each file. Drop the file in `knowledge_base/`, run `uv run python ingest.py`. The pipeline is idempotent — safe to re-run any time.
-
-### Long-term product direction: global club map
-
-The Scene Passport data model (`venue_name`, `city`, `country`, `date_visited`) is the seed of a standalone product concept: a rave passport app, equivalent to Untappd for craft beer or Letterboxd for films, but for the global club-going community. No such app exists with real depth. The data is in this codebase from Phase 20 onward. The map visualization (a Leaflet or Mapbox layer in Streamlit, or a dedicated front-end if the project grows) is an additive layer that requires no schema changes. Noted here as a long-term direction, not a near-term deliverable.
+The core app is a utility. The next extension adds features that bring people back on a daily or weekly cadence, sharing the same backend: a scene passport that stamps every club you have visited so the agent treats you as a regular; a promoter game that scores a three-DJ lineup on genre coherence, scene credibility, and arc; an era challenge, a fast quiz on Berlin techno history; and a doorman game that teaches how a real door reads a clubber, grounded in the door-culture content already in the KB. These work because the knowledge base has real depth; a shallow KB makes a game that breaks in two rounds, which is why the content work came first.
