@@ -33,25 +33,25 @@ def weekend_dates() -> dict[str, str]:
     is currently in or is about to enter, never to next weekend by mistake.
     """
     today = date.today()
-    weekday = today.weekday()  # Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6
+    weekday = today.weekday() # Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6
 
-    if weekday <= 3:        # Mon-Thu: count forward to upcoming Friday
+    if weekday <= 3: # Mon-Thu: count forward to upcoming Friday
         this_fri = today + timedelta(days=4 - weekday)
-    elif weekday == 4:      # Friday: today is the anchor
+    elif weekday == 4: # Friday: today is the anchor
         this_fri = today
-    elif weekday == 5:      # Saturday: yesterday was the anchor Friday
+    elif weekday == 5: # Saturday: yesterday was the anchor Friday
         this_fri = today - timedelta(days=1)
-    else:                   # Sunday: two days ago was the anchor Friday
+    else: # Sunday: two days ago was the anchor Friday
         this_fri = today - timedelta(days=2)
 
     return {
-        "today":         today.isoformat(),
-        "this_friday":   this_fri.isoformat(),
+        "today": today.isoformat(),
+        "this_friday": this_fri.isoformat(),
         "this_saturday": (this_fri + timedelta(days=1)).isoformat(),
-        "this_sunday":   (this_fri + timedelta(days=2)).isoformat(),
-        "next_friday":   (this_fri + timedelta(days=7)).isoformat(),
+        "this_sunday": (this_fri + timedelta(days=2)).isoformat(),
+        "next_friday": (this_fri + timedelta(days=7)).isoformat(),
         "next_saturday": (this_fri + timedelta(days=8)).isoformat(),
-        "next_sunday":   (this_fri + timedelta(days=9)).isoformat(),
+        "next_sunday": (this_fri + timedelta(days=9)).isoformat(),
     }
 
 
@@ -243,7 +243,7 @@ Use tool data verbatim or say you do not know.
 
 - Lead with the answer. Justify briefly after.
 - When citing facts from the knowledge base, mention the source category casually \
-(e.g. "according to the scene history" or "the Berlin techno notes mention…") \
+(e.g. "according to the scene history" or "the Berlin techno notes mention...") \
 rather than verbatim filenames.
 - When recommending events, flow naturally: name, what it is, why it fits (or \
 doesn't), one tradeoff if relevant. Three short lines per event is enough. \

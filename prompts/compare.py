@@ -1,10 +1,10 @@
 """
 Rave Atlas, event comparison reasoning prompt.
 
-Used by tools/events.py (Phase 7) to rank a list of events against the user's
-taste profile. The output is a ranked list with plain-language reasoning per
-event, not numeric scores. A reviewer reading the output should understand
-*why* the agent thinks one night fits and another does not.
+Used by tools/events.py to rank a list of events against the user's taste
+profile. The output is a ranked list with plain-language reasoning per event,
+not numeric scores. Anyone reading the output should understand why the agent
+thinks one night fits and another does not.
 """
 
 from __future__ import annotations
@@ -63,11 +63,11 @@ Do not use em dashes or en dashes, use commas or full stops.
 {{
   "ranked_events": [
     {{
-      "rank":         <integer, starting at 1>,
-      "event_name":   "<the event name from input, verbatim>",
-      "fit_summary":  "<one short line summarising the verdict>",
-      "reasoning":    "<2-3 sentences as described above>",
-      "tradeoff":     "<one line of honest downside, or null if there is none>"
+      "rank": <integer, starting at 1>,
+      "event_name": "<the event name from input, verbatim>",
+      "fit_summary": "<one short line summarising the verdict>",
+      "reasoning": "<2-3 sentences as described above>",
+      "tradeoff": "<one line of honest downside, or null if there is none>"
     }},
     ...
   ]

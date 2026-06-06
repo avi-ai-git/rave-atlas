@@ -1,52 +1,52 @@
 """
-Rave Atlas — LangGraph ReAct agent assembly.
+Rave Atlas, LangGraph ReAct agent assembly.
 
-This is the orchestration layer that wires every previous phase into one
+This is the orchestration layer that wires every other module into one
 runnable agent. The split of concerns is deliberate:
 
-  - Phase 3 (safety.py)     : guards the boundary before the LLM is touched
-  - Phase 4 (llm_client.py) : provider routing + cost + LangChain ChatOpenAI
-  - Phase 5 (prompts/)      : system / setlist / compare prompts
-  - Phase 6–8 (tools/)      : the five domain tools
-  - Phase 9 (memory.py)     : SqliteSaver checkpointer + taste profile
-  - Phase 10 (this file)    : composition of all the above into run_agent()
+  - safety.py     guards the boundary before the LLM is touched
+  - llm_client.py provider routing + cost + LangChain ChatOpenAI
+  - prompts/      system / setlist / compare prompts
+  - tools/        the domain tools
+  - memory.py     SqliteSaver checkpointer + taste profile
+  - this file     composition of all the above into run_agent()
 
-Public surface consumed by Phase 12 (app.py):
+Public surface consumed by app.py:
 
     run_agent(
-        message:       str,
-        session_id:    str,
-        model_id:      str | None = None,
-        tone:          str = "friendly",
-        temperature:   float = 0.7,
-        top_p:         float = 1.0,
-        thread_key:    str | None = None,   # per-tab thread; defaults session_id
+        message: str,
+        session_id: str,
+        model_id: str | None = None,
+        tone: str = "friendly",
+        temperature: float = 0.7,
+        top_p: float = 1.0,
+        thread_key: str | None = None, # per-tab thread; defaults session_id
     ) -> dict
 
 The return dict carries the assistant text plus everything the UI needs
 to render the trace, cost, and feedback controls without re-deriving it:
 
     {
-        "text":          str,            # final assistant reply (or block reason)
-        "blocked":       bool,           # True if a safety gate refused the turn
-        "block_reason":  str,            # populated only when blocked
-        "tool_calls":    list[dict],     # name + args + truncated output per call
-        "usage":         dict,           # aggregated prompt/completion/total tokens
-        "cost_estimate": float,          # rough USD across all reasoning steps
-        "model":         str,            # model ID that ran the loop
+        "text": str, # final assistant reply (or block reason)
+        "blocked": bool, # True if a safety gate refused the turn
+        "block_reason": str, # populated only when blocked
+        "tool_calls": list[dict], # name + args + truncated output per call
+        "usage": dict, # aggregated prompt/completion/total tokens
+        "cost_estimate": float, # rough USD across all reasoning steps
+        "model": str, # model ID that ran the loop
     }
 
 Notes on design choices:
 
 * `create_agent` from `langchain.agents` is the canonical langchain 1.x
-  ReAct factory — it supersedes `create_react_agent`, which was the
-  previous canonical path and is what the Sprint 2 review flagged when
-  we had imported the langgraph.prebuilt copy. Same module, evolved name.
+  ReAct factory. It supersedes `create_react_agent`, the previous canonical
+  path; importing the older `langgraph.prebuilt` copy is the easy mistake to
+  make here. Same module, evolved name.
 * Safety runs ahead of the agent loop. Failing safety never reaches the LLM,
   never spends tokens, never adds to LangSmith noise.
 * The user's message is wrapped via `safety.fence` before becoming a
   HumanMessage. The system prompt instructs the model to treat fenced
-  content as data, not instructions — defence-in-depth on top of the
+  content as data, not instructions, defence-in-depth on top of the
   Mistral moderation gate.
 * LangSmith tracing is enabled implicitly when `LANGCHAIN_TRACING_V2=true`
   is present in `.env`; LangChain's own instrumentation handles the rest.
@@ -68,6 +68,7 @@ import config
 import llm_client
 import memory
 import safety
+import textfmt
 from logging_config import get_logger
 from prompts.system import build_system_prompt, weekend_dates
 from tools.artists import enrich_artist as _enrich_artist_fn
@@ -102,7 +103,7 @@ _rate_limiter = safety.RateLimiter()
 
 # ── Tool wrappers ─────────────────────────────────────────────────────────────
 # Each underlying function already carries the docstring that the LLM reads
-# to decide *when* to call the tool — we wrap with @tool to expose the schema
+# to decide *when* to call the tool, we wrap with @tool to expose the schema
 # to LangChain without rewriting those descriptions.
 
 @tool
@@ -127,12 +128,15 @@ def explain_music(
 
     Args:
         query: User's question in natural language.
-        allowed_doc_types: Optional allowlist of doc_type values. Valid values:
-            "genre", "history", "labels", "theory". None searches the whole KB.
+        allowed_doc_types: Optional allowlist of doc_type values to narrow the
+            search. Valid values: "genre", "history", "labels", "theory",
+            "music_theory", "culture", "etiquette", "venue", "harm_reduction",
+            "general_education". None searches the whole knowledge base, which
+            is the right default unless the question clearly sits in one category.
         k: Number of chunks to retrieve. Default 4.
 
     Returns dict with keys: context, sources, grounded (bool).
-    grounded=False means the answer is not in the KB — surface that to the user
+    grounded=False means the answer is not in the KB, surface that to the user
     rather than inventing one.
     """
     return _explain_music_fn(query=query, allowed_doc_types=allowed_doc_types, k=k)
@@ -152,16 +156,16 @@ def find_events(
 
     Args:
         date_from: Inclusive start date in ISO format (YYYY-MM-DD).
-        date_to:   Inclusive end date in ISO format (YYYY-MM-DD).
-        filters:   Optional dict with any of:
-            "max_price" (float)  — drop events priced above this EUR value
-            "genres"    (list)   — keep only events matching these genre names
-            "venue"     (str)    — partial venue-name match
-            "area"      (str)    — partial Berlin-neighbourhood match
+        date_to: Inclusive end date in ISO format (YYYY-MM-DD).
+        filters: Optional dict with any of:
+            "max_price" (float), drop events priced above this EUR value
+            "genres" (list), keep only events matching these genre names
+            "venue" (str), partial venue-name match
+            "area" (str), partial Berlin-neighbourhood match
 
     Returns a list of normalised Berlin event dicts; empty list when RA is
     unreachable or returns nothing. Never invents events. Each event includes a
-    `url` field — the Resident Advisor page for that event; always cite it.
+    `url` field, the Resident Advisor page for that event; always cite it.
     """
     return _find_events_fn(date_from=date_from, date_to=date_to, filters=filters)
 
@@ -192,7 +196,7 @@ def enrich_artist(name: str) -> dict[str, Any]:
     """Fetch labels, genres, and notable releases for a specific artist.
 
     CALL THIS TOOL when the user wants to understand a specific artist's
-    record labels, genre lineage, recent releases, or background — useful
+    record labels, genre lineage, recent releases, or background, useful
     when deciding whether a lineup is worth attending.
 
     Args:
@@ -201,7 +205,7 @@ def enrich_artist(name: str) -> dict[str, Any]:
 
     Returns dict with keys: name, labels, genres, notable_releases,
     summary_facts, source ("discogs" / "musicbrainz" / "none"). Returns
-    empty lists when the artist is not found — never invents data.
+    empty lists when the artist is not found, never invents data.
     """
     return _enrich_artist_fn(name=name)
 
@@ -212,11 +216,11 @@ def build_setlist(seed: str, n: int = 8) -> dict[str, Any]:
 
     CALL THIS TOOL when the user asks for a tracklist, mix idea, warm-up
     set, closing set, or "build me a set / playlist for X". Pass the user's
-    seed verbatim — do not paraphrase ("hypnotic 2am techno" beats "techno set").
+    seed verbatim, do not paraphrase ("hypnotic 2am techno" beats "techno set").
 
     Args:
-        seed: User's brief — vibe, time of night, venue feel, BPM target.
-        n:    Number of tracks (default 8, clamped to 1-12).
+        seed: User's brief, the vibe, time of night, venue feel, BPM target.
+        n: Number of tracks (default 8, clamped to 1-20; 16 is a full hour).
 
     Returns dict: { title, tracks: [ {artist, title, reason, energy 1-10,
     preview_url, deezer_url, youtube_url} ], energy_arc }. Empty tracks on
@@ -231,10 +235,10 @@ def find_club(name: str) -> dict[str, Any]:
 
     CALL THIS TOOL when the user asks for a specific Berlin club's official
     website, programme/events page, address, Instagram, or "where do I find
-    what's on at X" — for any of the ~70 registered Berlin venues (Tresor,
+    what's on at X", for any of the ~70 registered Berlin venues (Tresor,
     Berghain, Sisyphos, Renate, Club der Visionaere, OHM, KitKat, RSO, etc.).
     Returns authoritative official links harvested from each club's berlin.de
-    Senate-registry page — not a web guess.
+    Senate-registry page, not a web guess.
 
     DO NOT call this for live event listings on dates (use find_events), nor
     for scene history / genre / culture questions (use explain_music).
@@ -244,7 +248,7 @@ def find_club(name: str) -> dict[str, Any]:
 
     Returns dict: { found (bool), name, address, website, events_url,
     berlin_de, instagram, note, suggestions }. found=False means the venue is
-    not in the registry — surface that and the suggestions rather than
+    not in the registry, surface that and the suggestions rather than
     inventing a URL.
     """
     return _find_club_fn(name=name)
@@ -269,7 +273,7 @@ def web_search(query: str, k: int = 5) -> dict[str, Any]:
 
     Args:
         query: A focused natural-language search query.
-        k:     Number of results to return (1 to 6). Default 5.
+        k: Number of results to return (1 to 6). Default 5.
 
     Returns dict with keys: query, results (list of {title, url, snippet}),
     grounded (bool). grounded=False means nothing usable was found; say so
@@ -319,9 +323,9 @@ def _extract_tool_trace(messages: list) -> list[dict[str, Any]]:
             if entry is None:
                 entry = {"name": getattr(msg, "name", "unknown"), "args": {}, "output_preview": ""}
             entry["output_preview"] = content[:_MAX_TOOL_OUTPUT_PREVIEW] + (
-                "…" if len(content) > _MAX_TOOL_OUTPUT_PREVIEW else ""
+                "..." if len(content) > _MAX_TOOL_OUTPUT_PREVIEW else ""
             )
-            entry["full_output"] = content  # full JSON for setlist/ratings rendering
+            entry["full_output"] = content # full JSON for setlist/ratings rendering
             trace.append(entry)
 
     # Any tool calls that never got a response (loop bailed mid-call)
@@ -369,13 +373,13 @@ def run_agent(
     Run a single user turn through the Rave Atlas ReAct agent.
 
     Order of operations:
-      1. validate_input  — length, duplicates, structural sanity
-      2. rate-limit      — rolling window per session
-      3. moderate        — Mistral classifier, score-gated
-      4. fence user msg  — defence-in-depth on top of moderation
-      5. load profile    — inject into system prompt
-      6. invoke agent    — checkpointer keyed by thread_key (defaults session_id)
-      7. aggregate       — pull text, tool trace, tokens, cost out of state
+      1. validate_input, length, duplicates, structural sanity
+      2. rate-limit, rolling window per session
+      3. moderate, Mistral classifier, score-gated
+      4. fence user msg, defence-in-depth on top of moderation
+      5. load profile, inject into system prompt
+      6. invoke agent, checkpointer keyed by thread_key (defaults session_id)
+      7. aggregate, pull text, tool trace, tokens, cost out of state
 
     Any failure in steps 1-3 short-circuits with blocked=True and a
     user-safe reason. No tokens are spent on blocked turns.
@@ -383,7 +387,7 @@ def run_agent(
     Args:
         thread_key: LangGraph conversation thread. Defaults to session_id.
             The UI passes a per-tab key (e.g. "<session>:weekend") so each tab
-            keeps an isolated conversation — a Learn question never bleeds into
+            keeps an isolated conversation, a Learn question never bleeds into
             the Weekend planner's context, and vice versa.
     """
     model_id = model_id or config.DEFAULT_MODEL
@@ -407,7 +411,7 @@ def run_agent(
         logger.info("agent_blocked_moderation", session_id=session_id)
         return _blocked(
             model_id,
-            "That message couldn't be processed — try rephrasing it.",
+            "That message couldn't be processed, try rephrasing it.",
         )
 
     # ── 4. assemble the run ───────────────────────────────────────────────────
@@ -455,7 +459,7 @@ def run_agent(
         logger.error("agent_invoke_failed", error=str(exc)[:200], session_id=session_id)
         return _blocked(
             model_id,
-            "The agent encountered an error mid-run. Please try again — "
+            "The agent encountered an error mid-run. Please try again, "
             "if it keeps happening, switch to a different model from the sidebar.",
         )
 
@@ -478,8 +482,12 @@ def run_agent(
 
     if not final_text:
         final_text = (
-            "I could not produce a response for that turn — please try rephrasing."
+            "I could not produce a response for that turn, please try rephrasing."
         )
+
+    # Enforce house typography on the user-facing answer (no em or en dashes,
+    # straight quotes) regardless of which model wrote it.
+    final_text = textfmt.humanize(final_text)
 
     tool_trace = _extract_tool_trace(messages)
     usage, cost = _aggregate_usage(messages, model_id)
@@ -528,7 +536,7 @@ if __name__ == "__main__":
     # structlog output (and our test banners) emit. Force UTF-8 so the
     # smoke-test output is readable on any platform.
     try:
-        sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+        sys.stdout.reconfigure(encoding="utf-8") # type: ignore[attr-defined]
     except (AttributeError, OSError):
         pass
 
@@ -538,28 +546,28 @@ if __name__ == "__main__":
     print("Test 1: empty message blocked at validation")
     print("=" * 60)
     r = run_agent("", SESSION)
-    print(f"  blocked      : {r['blocked']}")
-    print(f"  reason       : {r['block_reason']}")
-    print(f"  usage tokens : {r['usage']['total_tokens']}")
+    print(f" blocked : {r['blocked']}")
+    print(f" reason : {r['block_reason']}")
+    print(f" usage tokens : {r['usage']['total_tokens']}")
     assert r["blocked"] is True, "FAIL: empty message must be blocked"
     assert r["usage"]["total_tokens"] == 0, "FAIL: blocked turn must spend zero tokens"
-    print("  OK -validation gate caught it, no tokens spent")
+    print(" OK -validation gate caught it, no tokens spent")
 
     print()
     print("=" * 60)
     print("Test 2: 5000-char message blocked at validation")
     print("=" * 60)
     r = run_agent("a" * 5000, SESSION)
-    print(f"  blocked : {r['blocked']}")
-    print(f"  reason  : {r['block_reason'][:80]}")
+    print(f" blocked : {r['blocked']}")
+    print(f" reason : {r['block_reason'][:80]}")
     assert r["blocked"] is True, "FAIL: 5000-char message must be blocked"
-    print("  OK -length cap enforced")
+    print(" OK -length cap enforced")
 
     print()
     print("=" * 60)
     print("Test 3: legitimate KB question - full agent run")
     print("=" * 60)
-    # Uses config.DEFAULT_MODEL (Haiku 4.5) — kept explicit so a misconfigured
+    # Uses config.DEFAULT_MODEL (Haiku 4.5), kept explicit so a misconfigured
     # .env override surfaces here rather than half-way through a UI session.
     t0 = time.monotonic()
     r = run_agent(
@@ -567,38 +575,38 @@ if __name__ == "__main__":
         SESSION,
     )
     elapsed = time.monotonic() - t0
-    print(f"  blocked      : {r['blocked']}")
-    print(f"  model        : {r['model']}")
-    print(f"  latency_s    : {elapsed:.1f}")
-    print(f"  total_tokens : {r['usage']['total_tokens']}")
-    print(f"  cost_usd     : ${r['cost_estimate']}")
-    print(f"  n_tool_calls : {len(r['tool_calls'])}")
+    print(f" blocked : {r['blocked']}")
+    print(f" model : {r['model']}")
+    print(f" latency_s : {elapsed:.1f}")
+    print(f" total_tokens : {r['usage']['total_tokens']}")
+    print(f" cost_usd : ${r['cost_estimate']}")
+    print(f" n_tool_calls : {len(r['tool_calls'])}")
     for i, call in enumerate(r["tool_calls"], 1):
-        print(f"    [{i}] {call['name']}  args={list(call['args'].keys())}")
+        print(f" [{i}] {call['name']} args={list(call['args'].keys())}")
         preview = call["output_preview"][:120].replace("\n", " ")
-        print(f"        output: {preview}...")
+        print(f" output: {preview}...")
     print()
-    print("  -- assistant --")
-    print(f"  {r['text']}")
+    print(" -- assistant --")
+    print(f" {r['text']}")
     print()
     assert r["blocked"] is False, (
         f"FAIL: legitimate question should not be blocked. reason: {r['block_reason']}"
     )
     assert len(r["text"]) > 20, "FAIL: expected a substantive answer"
     assert r["usage"]["total_tokens"] > 0, "FAIL: real run should consume tokens"
-    print("  OK - agent answered with substance")
+    print(" OK - agent answered with substance")
 
     print()
     print("=" * 60)
     print("Test 4: duplicate-message guard (same text, same session)")
     print("=" * 60)
     dup_text = "What labels does Ben Klock record on?"
-    run_agent(dup_text, SESSION)  # first time — should pass
-    r = run_agent(dup_text, SESSION)  # second identical — should block
-    print(f"  blocked : {r['blocked']}")
-    print(f"  reason  : {r['block_reason']}")
+    run_agent(dup_text, SESSION) # first time, should pass
+    r = run_agent(dup_text, SESSION) # second identical, should block
+    print(f" blocked : {r['blocked']}")
+    print(f" reason : {r['block_reason']}")
     assert r["blocked"] is True, "FAIL: duplicate message must be blocked"
-    print("  OK -duplicate guard active")
+    print(" OK -duplicate guard active")
 
     print()
     print("=" * 60)
@@ -609,13 +617,13 @@ if __name__ == "__main__":
         "usage", "cost_estimate", "model",
     }
     assert set(r.keys()) == expected_keys, (
-        f"FAIL: return-shape drift — got {set(r.keys())}, expected {expected_keys}"
+        f"FAIL: return-shape drift, got {set(r.keys())}, expected {expected_keys}"
     )
     assert set(r["usage"].keys()) == {"prompt_tokens", "completion_tokens", "total_tokens"}, (
         "FAIL: usage shape drift"
     )
-    print(f"  keys present : {sorted(expected_keys)}")
-    print("  OK -UI contract intact")
+    print(f" keys present : {sorted(expected_keys)}")
+    print(" OK -UI contract intact")
 
     print()
     print("All assertions passed.")

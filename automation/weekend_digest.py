@@ -1,5 +1,5 @@
 """
-Rave Atlas — Friday-morning weekend digest automation.
+Rave Atlas, Friday-morning weekend digest automation.
 
 An APScheduler BackgroundScheduler job fires every Friday at 09:00 and:
 
@@ -14,9 +14,9 @@ The scheduler is a singleton. app.py calls get_scheduler() once on boot;
 subsequent calls return the already-running instance. atexit ensures a clean
 shutdown so APScheduler's internal thread pool doesn't leak on process exit.
 
-Public interface consumed by app.py (Phase 12):
-    get_scheduler()                  → BackgroundScheduler (idempotent)
-    generate_digest(session_id)      → str | None (for on-demand / testing)
+Public interface consumed by app.py:
+    get_scheduler() → BackgroundScheduler (idempotent)
+    generate_digest(session_id) → str | None (for on-demand / testing)
 """
 
 from __future__ import annotations
@@ -33,6 +33,7 @@ from apscheduler.triggers.cron import CronTrigger
 import config
 import llm_client
 import memory
+import textfmt
 from logging_config import get_logger
 from tools.events import find_events
 
@@ -69,15 +70,15 @@ def _digest_window() -> tuple[str, str, str, str]:
     period_label: human-readable title injected into the digest header.
     """
     today = date.today()
-    wd = today.weekday()  # Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6
+    wd = today.weekday() # Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6
 
-    if wd <= 2:  # Mon, Tue, Wed
+    if wd <= 2: # Mon, Tue, Wed
         days_to_sunday = 6 - wd
         date_from = today
         date_to = today + timedelta(days=days_to_sunday)
         label = f"Midweek in Berlin, {today.strftime('%d %b %Y')}"
         dtype = "midweek"
-    elif wd == 3:  # Thu
+    elif wd == 3: # Thu
         friday = today + timedelta(days=1)
         tuesday = friday + timedelta(days=4)
         date_from = friday
@@ -87,7 +88,7 @@ def _digest_window() -> tuple[str, str, str, str]:
             f"to {tuesday.strftime('%d %b %Y')}"
         )
         dtype = "preview"
-    else:  # Fri=4, Sat=5, Sun=6
+    else: # Fri=4, Sat=5, Sun=6
         days_since_friday = wd - 4
         friday = today - timedelta(days=days_since_friday)
         tuesday = friday + timedelta(days=4)
@@ -182,7 +183,7 @@ def _build_digest_prompt(
         header = f"## Weekend Preview ({date_from} to {date_to})"
         top_picks_label = f"Top picks for this weekend{' for you' if profile else ''}"
         extra_section = "Also on the radar"
-    else:  # weekend
+    else: # weekend
         intro = (
             "You are writing the weekend digest for a Berlin electronic music fan. "
             "The weekend is here or already underway. Be direct and decisive."
@@ -236,8 +237,7 @@ def generate_digest(session_id: str) -> str | None:
     personalisation), calls the LLM, and writes the result to the digest
     store via memory.save_digest.
 
-    Returns the digest text on success, None on any failure. Never raises —
-    a failed digest job should not crash the scheduler or the Streamlit app.
+    Returns the digest text on success, None on any failure. Never raises, a failed digest job should not crash the scheduler or the Streamlit app.
 
     Args:
         session_id: The session to generate for. Use "__global__" for a
@@ -272,7 +272,7 @@ def generate_digest(session_id: str) -> str | None:
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
         )
-        digest_text = result["text"].strip()
+        digest_text = textfmt.humanize(result["text"].strip())
     except Exception as exc:
         logger.error("digest_llm_failed", error=str(exc), session_id=session_id)
         return None
@@ -333,7 +333,7 @@ def get_scheduler() -> BackgroundScheduler:
     """
     Return the running BackgroundScheduler (start it if not already running).
 
-    Idempotent — call as many times as you like from app.py. The Friday
+    Idempotent, call as many times as you like from app.py. The Friday
     09:00 job is registered with replace_existing=True so re-registration
     on hot-reload doesn't duplicate the job.
 
@@ -345,7 +345,7 @@ def get_scheduler() -> BackgroundScheduler:
         return _scheduler
 
     _scheduler = BackgroundScheduler(
-        job_defaults={"misfire_grace_time": 3600},  # 1h grace — handles late wakeup
+        job_defaults={"misfire_grace_time": 3600}, # 1h grace, handles late wakeup
         timezone="Europe/Berlin",
     )
 
@@ -380,7 +380,7 @@ if __name__ == "__main__":
     import os
 
     try:
-        sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+        sys.stdout.reconfigure(encoding="utf-8") # type: ignore[attr-defined]
     except (AttributeError, OSError):
         pass
 
@@ -396,10 +396,10 @@ if __name__ == "__main__":
         print("=" * 60)
         from datetime import date as _date
         d_from, d_to, label, dtype = _digest_window()
-        print(f"  date_from    : {d_from}")
-        print(f"  date_to      : {d_to}")
-        print(f"  period_label : {label}")
-        print(f"  digest_type  : {dtype}")
+        print(f" date_from : {d_from}")
+        print(f" date_to : {d_to}")
+        print(f" period_label : {label}")
+        print(f" digest_type : {dtype}")
         assert len(d_from) == 10 and d_from[4] == "-", "FAIL: date_from not ISO format"
         assert len(d_to) == 10 and d_to[4] == "-", "FAIL: date_to not ISO format"
         assert _date.fromisoformat(d_to) >= _date.fromisoformat(d_from), (
@@ -409,8 +409,8 @@ if __name__ == "__main__":
         assert label, "FAIL: period_label must not be empty"
         diff = (_date.fromisoformat(d_to) - _date.fromisoformat(d_from)).days
         assert 0 <= diff <= 7, f"FAIL: window should be 0-7 days, got {diff}"
-        print(f"  window       : {diff} days")
-        print("  OK - digest window correct for today's weekday")
+        print(f" window : {diff} days")
+        print(" OK - digest window correct for today's weekday")
 
         print()
         print("=" * 60)
@@ -419,24 +419,24 @@ if __name__ == "__main__":
         # Ensure tables exist by touching memory once
         memory._open_db().close()
         sessions = _list_sessions_with_profiles()
-        print(f"  sessions : {sessions}")
+        print(f" sessions : {sessions}")
         assert sessions == [], "FAIL: fresh DB should return no sessions"
-        print("  OK - empty list on fresh DB")
+        print(" OK - empty list on fresh DB")
 
         print()
         print("=" * 60)
         print("Test 3: generate_digest - full LLM run (live API)")
         print("=" * 60)
-        print("  (fetches RA events + calls LLM - may take 15-30s)")
+        print(" (fetches RA events + calls LLM - may take 15-30s)")
         digest = generate_digest(_GLOBAL_SESSION)
         if digest is None:
-            print("  WARN: digest returned None (RA or LLM may be unavailable)")
-            print("  Testing fallback: checking that None is handled gracefully")
+            print(" WARN: digest returned None (RA or LLM may be unavailable)")
+            print(" Testing fallback: checking that None is handled gracefully")
         else:
-            print(f"  digest length : {len(digest)} chars")
-            print(f"  digest preview:")
+            print(f" digest length : {len(digest)} chars")
+            print(f" digest preview:")
             for line in digest.splitlines()[:8]:
-                print(f"    {line}")
+                print(f" {line}")
             assert len(digest) > 50, "FAIL: digest should have meaningful content"
             assert "Berlin" in digest or "Weekend" in digest or "weekend" in digest, (
                 "FAIL: digest should mention Berlin or Weekend"
@@ -444,7 +444,7 @@ if __name__ == "__main__":
             # Verify it was persisted
             loaded = memory.load_digest(_GLOBAL_SESSION)
             assert loaded == digest, "FAIL: loaded digest does not match generated digest"
-            print("  OK - digest generated and persisted")
+            print(" OK - digest generated and persisted")
 
         print()
         print("=" * 60)
@@ -452,15 +452,15 @@ if __name__ == "__main__":
         print("=" * 60)
         from apscheduler.schedulers.background import BackgroundScheduler as _BS
         sched = get_scheduler()
-        print(f"  type    : {type(sched).__name__}")
-        print(f"  running : {sched.running}")
+        print(f" type : {type(sched).__name__}")
+        print(f" running : {sched.running}")
         assert isinstance(sched, _BS), "FAIL: get_scheduler must return BackgroundScheduler"
         assert sched.running, "FAIL: scheduler must be running after get_scheduler()"
         jobs = sched.get_jobs()
         job_ids = [j.id for j in jobs]
-        print(f"  jobs    : {job_ids}")
+        print(f" jobs : {job_ids}")
         assert "weekend_digest" in job_ids, "FAIL: weekend_digest job must be registered"
-        print("  OK - scheduler running with weekend_digest job")
+        print(" OK - scheduler running with weekend_digest job")
 
         print()
         print("=" * 60)
@@ -469,7 +469,7 @@ if __name__ == "__main__":
         sched2 = get_scheduler()
         assert sched is sched2, "FAIL: get_scheduler must return the same singleton"
         assert len(sched2.get_jobs()) == len(jobs), "FAIL: job count changed on second call"
-        print("  OK - same object returned, no duplicate jobs")
+        print(" OK - same object returned, no duplicate jobs")
 
     finally:
         # Shut down scheduler cleanly before cleanup

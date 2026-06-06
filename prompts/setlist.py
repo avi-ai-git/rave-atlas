@@ -1,7 +1,7 @@
 """
 Rave Atlas, set-list generation prompt.
 
-Used by tools/setlist.py (Phase 8) to ask the LLM for a tracklist with a
+Used by tools/setlist.py to ask the LLM for a tracklist with a
 deliberate energy arc. The LLM returns artist, title, one-line reason, and
 an energy value (1 to 10) per track; tools/setlist.py then attaches Deezer
 preview URLs and YouTube search links.
@@ -27,10 +27,10 @@ A set without an arc is just a playlist.
   "title": "<short evocative title for the set>",
   "tracks": [
     {{
-      "artist":  "<artist name>",
-      "title":   "<track title>",
-      "reason":  "<one line: why this track in this position>",
-      "energy":  <integer 1-10>
+      "artist": "<artist name>",
+      "title": "<track title>",
+      "reason": "<one line: why this track in this position>",
+      "energy": <integer 1-10>
     }},
     ...
   ]
@@ -47,7 +47,7 @@ genre or a directly adjacent sub-genre only. If the seed is "hypnotic techno", \
 every track must be techno or a recognised techno variant (industrial techno, \
 dark techno, Detroit techno). Do not include progressive house, trance, drum \
 and bass, or any other genre, ever. If the seed is "deep house", every track \
-must be deep house, soulful house, minimal deep, or organic house — not tech \
+must be deep house, soulful house, minimal deep, or organic house, not tech \
 house, not melodic techno. If you cannot find a real track in the correct \
 genre for a given position, pick a different artist in that genre rather than \
 crossing into another genre. Genre drift is the most damaging mistake in set \
@@ -84,37 +84,37 @@ credible artist and a specific reason for their position.
   "tracks": [
     {{
       "artist": "Marcel Dettmann",
-      "title":  "Plain",
+      "title": "Plain",
       "reason": "Opens with a stripped kick and hat, anchors a half-full floor without committing energy.",
       "energy": 4
     }},
     {{
       "artist": "Ben Klock",
-      "title":  "Subzero",
+      "title": "Subzero",
       "reason": "Subby low-end joins the kick, the room starts breathing in time.",
       "energy": 5
     }},
     {{
       "artist": "Stef Mendesidis",
-      "title":  "Skyline Drive",
+      "title": "Skyline Drive",
       "reason": "Klockworks-aligned tension build, sets up the first peak without giving it away.",
       "energy": 6
     }},
     {{
       "artist": "DVS1",
-      "title":  "Klockworks 18",
+      "title": "Klockworks 18",
       "reason": "Peak, relentless kick weight, a single-element track that holds the room locked.",
       "energy": 8
     }},
     {{
       "artist": "Norman Nodge",
-      "title":  "Tracking",
+      "title": "Tracking",
       "reason": "Sustains the peak with a different texture, avoids the drop-off after a single peak track.",
       "energy": 7
     }},
     {{
       "artist": "Function",
-      "title":  "Tide",
+      "title": "Tide",
       "reason": "Mixes out, slower decay, hat-driven, hands off cleanly to whatever follows.",
       "energy": 6
     }}
@@ -132,37 +132,37 @@ Arc: 4, 5, 6, 8, 7, 6 (warm-up, build, peak, sustain, transition out).
   "tracks": [
     {{
       "artist": "Mr. Fingers",
-      "title":  "Mystery of Love",
+      "title": "Mystery of Love",
       "reason": "Origin-of-deep-house chord stab, sets a generous, patient mood.",
       "energy": 2
     }},
     {{
       "artist": "Âme",
-      "title":  "Rej (Instrumental)",
+      "title": "Rej (Instrumental)",
       "reason": "Innervisions melodic register, bass enters, the room begins to gather.",
       "energy": 3
     }},
     {{
       "artist": "Dixon",
-      "title":  "Where We At",
+      "title": "Where We At",
       "reason": "Classic Watergate sound, kicks pick up, swing finds the dancers.",
       "energy": 4
     }},
     {{
       "artist": "Stimming",
-      "title":  "Funkenflug",
+      "title": "Funkenflug",
       "reason": "Warmer textures, melodic motif over a steady groove, the room is committed.",
       "energy": 5
     }},
     {{
       "artist": "Tale Of Us",
-      "title":  "North Star",
+      "title": "North Star",
       "reason": "Cinematic build, longer breakdowns, bridges into the next DJ's set cleanly.",
       "energy": 6
     }},
     {{
       "artist": "Henrik Schwarz",
-      "title":  "Walk Music",
+      "title": "Walk Music",
       "reason": "Hand-off track, full energy, classical-electronic crossover that lets the headliner take over.",
       "energy": 7
     }}
