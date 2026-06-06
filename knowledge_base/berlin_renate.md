@@ -4,7 +4,7 @@ scope: berlin
 source: "renate.cc official website, RA event listings"
 ---
 
-# Salon zur Wilden Renate — Full Profile
+# Salon zur Wilden Renate, Full Profile
 
 ## Basic facts
 

@@ -4,7 +4,7 @@ scope: berlin
 source: "sisyphos-berlin.net, curated community knowledge, RA, sisy.fan tools"
 ---
 
-# Sisyphos — Full Profile
+# Sisyphos, Full Profile
 
 ## Basic facts
 
@@ -33,7 +33,7 @@ Sisyphos runs a marathon weekend format:
 - Doors open Saturday evening, typically around 21:00 or 22:00
 - The event runs continuously through Saturday night, all day Sunday, Sunday night, and typically into early Monday morning
 - Some editions run to Monday noon or beyond
-- The outdoor area opens as the sun rises on Sunday morning; this is the signature Sisyphos moment — 6am-10am in the garden with the Spree view
+- The outdoor area opens as the sun rises on Sunday morning; this is the signature Sisyphos moment, 6am-10am in the garden with the Spree view
 - Closing time is flexible and weather-dependent; check the website for each edition's expected end
 
 ## Lineup and booking
@@ -67,9 +67,9 @@ The Sunday daytime garden experience is iconic: people who have danced all night
 
 ## What to bring and practical notes
 
-- Cash is accepted; ATM on site but can run out on busy nights — bring some cash from outside
+- Cash is accepted; ATM on site but can run out on busy nights, bring some cash from outside
 - Lockers available for storage
-- The Spree is steps away — being near water in early morning is part of the experience
+- The Spree is steps away, being near water in early morning is part of the experience
 - Dress in layers that can be shed; indoor/outdoor temperature differences are significant
 - Cycling to Sisyphos is popular; secure your bike
 - The exit/re-entry policy changes by edition; confirm at the door when you arrive
@@ -78,4 +78,4 @@ The Sunday daytime garden experience is iconic: people who have danced all night
 
 Sisyphos sits in an interesting position in the Berlin club hierarchy: it has the scale of a commercial venue but retains enough booking seriousness to be taken seriously by the underground. It is one of the first venues recommended to tourists and newcomers who want the full Berlin experience but may find Berghain's door risk discouraging. It is also where many Berlin locals go for long summer weekends that would be wasted on waiting at Berghain.
 
-Fan resource: sisy.fan is a community-built tool that provides advance lineup guesses, crowd prediction, and historical booking data for Sisyphos — useful for planning visits around specific artists.
+Fan resource: sisy.fan is a community-built tool that provides advance lineup guesses, crowd prediction, and historical booking data for Sisyphos, useful for planning visits around specific artists.

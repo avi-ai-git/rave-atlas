@@ -6,13 +6,13 @@ Psychedelic trance (psytrance) evolved from Goa trance in the early 1990s, origi
 
 ## BPM and rhythmic signature
 
-- **BPM range:** 138–148 BPM for full-on and progressive psytrance; dark/forest psytrance can reach 148–155.
+- **BPM range:** 138-148 BPM for full-on and progressive psytrance; dark/forest psytrance can reach 148-155.
 - **Kick pattern:** Heavy, punchy four-on-the-floor kick, often with a strong subbass layer.
 - **Character:** Layered, hypnotic, with rapid arpeggio sequences on synthesisers and a consistent "rolling" forward motion. The signature sound is a buzzing, modulated synthesiser line that weaves around the kick.
 
 ## How to recognise it
 
-- The "rolling" synth arpeggio — a rapidly repeating melodic pattern that evolves slowly over many bars.
+- The "rolling" synth arpeggio, a rapidly repeating melodic pattern that evolves slowly over many bars.
 - Reverb-heavy, psychedelic production: sounds feel wide and spacious, often with alien or otherworldly textures.
 - Lacks the industrial coldness of techno; has more colour and melodic warmth but is faster and more hypnotic than house.
 - Commonly heard at outdoor festivals (Fusion in Germany, Boom in Portugal) rather than indoor clubs.

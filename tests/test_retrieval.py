@@ -1,5 +1,5 @@
 """
-Rave Atlas — knowledge base retrieval integration tests.
+Rave Atlas, knowledge base retrieval integration tests.
 
 Tests actual ChromaDB retrieval quality against real embeddings. These are
 integration tests: they skip gracefully if the ChromaDB data directory is
@@ -23,7 +23,7 @@ Test taxonomy:
   - Allowlist filtering: when allowed_doc_types is passed, only matching
     chunks are returned.
 
-Run:  uv run pytest tests/test_retrieval.py -v
+Run: uv run pytest tests/test_retrieval.py -v
 """
 from __future__ import annotations
 
@@ -39,11 +39,11 @@ _CHROMA_MISSING = not os.path.isdir(_config.CHROMA_DIR)
 
 pytestmark = pytest.mark.skipif(
     _CHROMA_MISSING,
-    reason="ChromaDB not found — run `uv run python ingest.py` first",
+    reason="ChromaDB not found, run `uv run python ingest.py` first",
 )
 
-THRESHOLD = 0.65          # mirrors tools/music_kb.SIMILARITY_THRESHOLD
-K = 5                     # retrieve more candidates so we can check the set
+THRESHOLD = 0.65 # mirrors tools/music_kb.SIMILARITY_THRESHOLD
+K = 5 # retrieve more candidates so we can check the set
 
 
 # ---------------------------------------------------------------------------
@@ -85,7 +85,7 @@ def _any_text_contains(res: dict, keyword: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# 1. Metadata integrity — run once over the whole collection
+# 1. Metadata integrity, run once over the whole collection
 # ---------------------------------------------------------------------------
 
 class TestMetadataIntegrity:
@@ -127,12 +127,15 @@ class TestMetadataIntegrity:
         scopes = {m.get("scope") for m in sample["metadatas"]}
         assert "general" in scopes
 
-    def test_city_scopes_present(self):
+    def test_no_city_scopes(self):
+        """City primers were removed deliberately: they were too thin to beat a
+        web-search fallback and they diluted Berlin retrieval. The KB is now
+        Berlin-deep and music-deep only, so no city:* scopes should remain."""
         sample = self._full_sample()
         scopes = {m.get("scope") for m in sample["metadatas"]}
         city_scopes = [s for s in scopes if s and s.startswith("city:")]
-        assert len(city_scopes) >= 15, (
-            f"Expected 15+ city scopes, got {len(city_scopes)}: {city_scopes}"
+        assert city_scopes == [], (
+            f"Expected no city scopes after the primer removal, got: {city_scopes}"
         )
 
     def test_old_monolith_doc_type_gone(self):
@@ -141,19 +144,24 @@ class TestMetadataIntegrity:
         sample = self._full_sample()
         doc_types = {m.get("doc_type") for m in sample["metadatas"]}
         assert "city_guide" not in doc_types, (
-            "Old monolith doc_type 'city_guide' still present — "
+            "Old monolith doc_type 'city_guide' still present, "
             "drop and rebuild the ChromaDB collection."
         )
 
     def test_chunk_count_reasonable(self):
+        # The chunker is heading-aware: it resets at each markdown section and
+        # overlaps adjacent chunks, yielding finer, more precise chunks (one per
+        # section rather than a few large merged blocks). That pushes the total
+        # higher than a naive paragraph chunker would, hence the wider ceiling.
+        # The lower bound still guards against an empty or broken build.
         from ingest import get_collection
         count = get_collection().count()
         assert count >= 150, f"Expected 150+ chunks, got {count}"
-        assert count <= 400, f"Suspiciously many chunks: {count} — check for duplicates"
+        assert count <= 700, f"Suspiciously many chunks: {count}, check for duplicates"
 
 
 # ---------------------------------------------------------------------------
-# 2. Scope routing — queries must land in the right partition
+# 2. Scope routing, queries must land in the right partition
 # ---------------------------------------------------------------------------
 
 class TestScopeRouting:
@@ -163,7 +171,7 @@ class TestScopeRouting:
         ("Tresor founded by Dimitri Hegemann", "berlin"),
         ("Sisyphos floors Hammahalle Wintergarten", "berlin"),
         # Klockworks is in the general labels.md (correct); skip top-1-scope check.
-        # ("Klockworks Ben Klock label", "berlin"),  # covered by test_klockworks_in_top5
+        # ("Klockworks Ben Klock label", "berlin"), # covered by test_klockworks_in_top5
         ("Ostgut Ton Berghain label history", "berlin"),
         ("Berlin Love Parade history 1989", "berlin"),
         ("What BPM is techno", "general"),
@@ -188,26 +196,8 @@ class TestScopeRouting:
             f"Klockworks query returned unexpected scopes: {scopes}"
         )
 
-    @pytest.mark.parametrize("city,scope_key,expected_keyword", [
-        ("techno scene in Tbilisi Georgia clubs", "city:tbilisi", "tbilisi"),
-        ("electronic music clubs Prague Czech", "city:prague", "prague"),
-        ("rave scene Amsterdam Netherlands", "city:amsterdam", "amsterdam"),
-        ("nightlife Belgrade Serbia electronic", "city:belgrade", "belgrade"),
-        ("techno clubs London UK underground", "city:london", "london"),
-        ("electronic music scene in Tbilisi", "city:tbilisi", "tbilisi"),
-    ])
-    def test_city_primer_routing(self, city: str, scope_key: str, expected_keyword: str):
-        res = _query(city)
-        # The top hit or any of top-5 should be the matching city primer
-        scopes = _all_scopes(res)
-        assert scope_key in scopes, (
-            f"Query {city!r}: expected {scope_key} in top-{K} results, "
-            f"got scopes: {scopes}"
-        )
-
-
 # ---------------------------------------------------------------------------
-# 3. Fact retrieval — specific named entities must surface within threshold
+# 3. Fact retrieval, specific named entities must surface within threshold
 # ---------------------------------------------------------------------------
 
 class TestFactRetrieval:
@@ -226,7 +216,7 @@ class TestFactRetrieval:
         ),
         # Berghain floors
         (
-            "What floors does Berghain have — Panorama Bar Saule Lab.oratory",
+            "What floors does Berghain have, Panorama Bar Saule Lab.oratory",
             "panorama bar",
             0.50,
         ),
@@ -252,9 +242,9 @@ class TestFactRetrieval:
         (
             "Sisyphos floors Hammahalle Wintergarten Dampfer",
             "hammahalle",
-            0.62,  # embed distance for venue/berlin chunk; relaxed from 0.55
+            0.62, # embed distance for venue/berlin chunk; relaxed from 0.55
         ),
-        # Fusion Festival — chunk is merged with Tresor/Klockworks section;
+        # Fusion Festival, chunk is merged with Tresor/Klockworks section;
         # natural query "what is Fusion Festival Berlin" pulls it at dist~0.45.
         (
             "what is Fusion Festival Berlin summer pilgrimage",
@@ -321,7 +311,7 @@ class TestFactRetrieval:
             "mdma",
             0.40,
         ),
-        # Drug checking Berlin SONAR — in berlin_club_venues.md (venue/berlin).
+        # Drug checking Berlin SONAR, in berlin_club_venues.md (venue/berlin).
         # Needs Birgit-specific terms to beat the general harm_reduction chunks.
         (
             "SONAR safer nightlife Birgit und Bier Berlin drug checking naloxone",
@@ -344,7 +334,7 @@ class TestFactRetrieval:
         (
             "How to get into Berghain tips advice dress code",
             "berghain",
-            0.50,  # relaxed from 0.45; etiquette/berlin chunk scores ~0.454
+            0.50, # relaxed from 0.45; etiquette/berlin chunk scores ~0.454
         ),
         # Ostgut Ton label
         (
@@ -378,7 +368,7 @@ class TestFactRetrieval:
         best_dist = _top_distance(res)
         assert best_dist <= max_distance, (
             f"Query {query!r}: best distance {best_dist:.3f} > {max_distance} "
-            f"(not grounded) — fact '{must_contain}' may be missing from KB"
+            f"(not grounded), fact '{must_contain}' may be missing from KB"
         )
         assert _any_text_contains(res, must_contain), (
             f"Query {query!r}: keyword '{must_contain}' not found in top-{K} chunks. "
@@ -388,7 +378,7 @@ class TestFactRetrieval:
 
 
 # ---------------------------------------------------------------------------
-# 4. Gap-honesty — off-topic queries must stay above threshold
+# 4. Gap-honesty, off-topic queries must stay above threshold
 # ---------------------------------------------------------------------------
 
 class TestGapHonesty:
@@ -399,8 +389,7 @@ class TestGapHonesty:
     """
 
     @pytest.mark.parametrize("query", [
-        # Note: avoid queries mentioning European cities or club/music terms —
-        # city primers and the broad KB will score them below the threshold.
+        # Note: avoid queries mentioning European cities or club/music terms, # city primers and the broad KB will score them below the threshold.
         "How to bake sourdough bread from scratch with yeast and flour",
         "How do solar panels generate electricity photovoltaic cells",
         "Python programming language decorators and closures",
@@ -414,13 +403,13 @@ class TestGapHonesty:
         best_dist = _top_distance(res)
         assert best_dist >= THRESHOLD, (
             f"Off-topic query {query!r}: best distance {best_dist:.3f} < {THRESHOLD} "
-            f"— KB may be overfitting or has off-topic content. "
+            f", KB may be overfitting or has off-topic content. "
             f"Top source: {_top_meta(res).get('source')}"
         )
 
 
 # ---------------------------------------------------------------------------
-# 5. Allowlist filtering — doc_type filter must restrict results
+# 5. Allowlist filtering, doc_type filter must restrict results
 # ---------------------------------------------------------------------------
 
 class TestAllowlistFiltering:
@@ -461,16 +450,16 @@ class TestAllowlistFiltering:
                 f"Allowlist filter leaked: {meta.get('doc_type')}"
             )
 
-    def test_city_primer_filter(self):
-        res = _query("techno scene nightlife clubs", doc_types=["city_primer"])
+    def test_harm_reduction_filter(self):
+        res = _query("MDMA dosing hydration safe use", doc_types=["harm_reduction"])
         for meta in res["metadatas"][0]:
-            assert meta.get("doc_type") == "city_primer", (
+            assert meta.get("doc_type") == "harm_reduction", (
                 f"Allowlist filter leaked: {meta.get('doc_type')}"
             )
 
 
 # ---------------------------------------------------------------------------
-# 6. explain_music tool integration — tests the full tool path
+# 6. explain_music tool integration, tests the full tool path
 # ---------------------------------------------------------------------------
 
 class TestExplainMusicTool:
@@ -487,7 +476,6 @@ class TestExplainMusicTool:
         assert len(result["sources"]) > 0
 
     def test_off_topic_returns_ungrounded(self):
-        # Avoid city names — the city primers will score them below threshold.
         result = self._explain("How to bake sourdough bread from scratch with yeast")
         assert result["grounded"] is False
         assert result["sources"] == []
@@ -501,11 +489,6 @@ class TestExplainMusicTool:
         result = self._explain("MDMA harm reduction safe use")
         assert result["grounded"] is True
         assert "mdma" in result["context"].lower()
-
-    def test_tbilisi_city_primer(self):
-        result = self._explain("techno clubs and electronic scene in Tbilisi")
-        assert result["grounded"] is True
-        assert "tbilisi" in result["context"].lower()
 
     def test_sisyphos_floors_grounded(self):
         result = self._explain("Sisyphos club floors and spaces in Berlin")
