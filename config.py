@@ -291,6 +291,9 @@ CITY_REGIONS: dict[str, list[str]] = {
 
 DISCOGS_TOKEN: str = os.environ.get("DISCOGS_TOKEN", "")
 MISTRAL_API_KEY: str = os.environ.get("MISTRAL_API_KEY", "")
+# Optional. When set, web_search uses Brave Search (SLA, 2 k free/month) instead
+# of the keyless DuckDuckGo fallback. Get a key at search.brave.com/api.
+BRAVE_SEARCH_API_KEY: str = os.environ.get("BRAVE_SEARCH_API_KEY", "")
 # Mistral's OpenAI-compatible endpoint. The same MISTRAL_API_KEY powers both the
 # safety moderation call (safety.py) and Mistral Large as a selectable chat model.
 MISTRAL_BASE_URL: str = os.environ.get(
