@@ -196,6 +196,7 @@ def format_digest_html(
 
     lines.append("")
     lines.append('🎟 Tap titles for details. RA links go to tickets; others to the club site.')
+    lines.append(f'<i>window: {date_from} to {date_to}</i>')
 
     msg = "\n".join(lines)
     if len(msg) > _TELEGRAM_MAX_CHARS:
@@ -253,6 +254,7 @@ def run() -> bool:
     Date window adapts to today's weekday so manual triggers are always
     relevant, not stuck pointing at the next Friday.
     """
+    print(f"[weekend_telegram] v2 running from {__file__}", flush=True)
     d_from, d_to, label = _digest_window()
     date_from, date_to = d_from.isoformat(), d_to.isoformat()
 
