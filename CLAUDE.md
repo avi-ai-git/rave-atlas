@@ -361,3 +361,81 @@ These are real, tested conversation flows that demonstrate the agent and tools w
 **19. The partner prep.** "My partner loves this music but I know nothing, what should I understand before our night out?" Casual-tone introduction to the genre, the culture, the door etiquette, and one specific venue recommendation, without condescension.
 
 **20. The KB expansion workflow.** Run `uv run python automation/kb_enrich.py --dry-run` to preview Reddit and web content. Review the draft markdown files in `knowledge_base/community/`. Edit for accuracy. Run `uv run python ingest.py` to push the new content into ChromaDB. The Rave Wiki now covers whatever you added — permanently, until the next container restart on cloud.
+
+---
+
+## Phase 20-22 — Capstone Extension: Games and Engagement
+
+The core app (Phases 0-17) is a utility: it finds events, teaches music, and builds sets. The capstone extension adds a second mode — engagement. The goal is retention: people who come back daily or weekly, not just when planning a night out.
+
+### Architecture decision: same app, same backend, new tab
+
+All four features below share the same backend: ChromaDB, SQLite, the LangGraph agent, and the taste profile. A separate app would mean two separate profiles and two knowledge bases to maintain. One new "Play" tab in the existing Streamlit app is the right structure — same data, new surface.
+
+The games only work because the KB has real depth. A shallow knowledge base produces a game that feels generic and breaks in two rounds. This is why the capstone follows the KB research phase, not the other way around.
+
+### Phase 20 — Scene Passport
+
+**What it is in one sentence:** a digital stamp book of every club you have been to, which makes the agent treat you differently based on your real experience rather than assuming you are a newcomer every time.
+
+**How it works:**
+- New SQLite table: `(user_id, venue_name, city, country, date_visited)`
+- A check-in UI panel: pick a venue from the known list or type one, add an optional date, save it
+- The agent reads the passport before every recommendation: if Tresor and Berghain are checked in, it skips the basics and goes straight to the nuance
+
+**Why the data model matters:** the passport table is the foundation for everything that follows. Phase 21 games read it to calibrate difficulty. The long-term map visualization is just a rendering layer on top of rows that already exist.
+
+**Long-term vision (not Phase 20):** a world map with a pin for every venue across every city the user has ever visited. Ravers travel specifically to go to clubs — Berlin, Ibiza, Tokyo, Melbourne, New York — and there is no good app for recording that journey. The data model here is already correct for it; the map is a front-end layer added later without schema changes.
+
+**Files touched:** `memory.py` (new table and helpers), `app.py` (new panel), `agent.py` (passport context injected into system prompt alongside the taste profile).
+
+### Phase 21 — The Promoter Game and Era Challenge ("Play" tab)
+
+**The Promoter Game in one sentence:** you book 3 real DJs for a real Berlin venue and the agent scores your lineup on musical logic, scene credibility, and whether the energy arc makes sense.
+
+**How the game works:**
+- The game gives you a brief: "Tresor, Saturday midnight, 300 capacity, 15 euro door, hypnotic techno"
+- You pick a warm-up DJ, a headliner, and a closing act — all real artists
+- The agent judges three dimensions: (1) genre coherence across all three acts, (2) whether these artists would realistically share a bill given their label affiliations and scene tier, (3) whether the energy arc is correct (the heaviest act should not open)
+- Score 1-10 per dimension with specific reasoning, not just a number
+- Replayable: a different venue, genre, and budget each round
+
+**Why the agent is a credible judge:** it knows that a Klockworks-aligned act and a BPitch-signed artist are not natural co-headliners, that Surgeon's industrial sound does not fit a Watergate warm-up slot, that a closing DJ should be lighter than the peak act. A generic LLM without the scene KB cannot make those calls.
+
+**The Era Challenge in one sentence:** the agent picks a year from Berlin techno history and you name 3 artists or tracks from that year — pub quiz format, two minutes, streak mechanic for daily habit.
+
+**How it works:**
+- Agent picks a year from a curated set (1991, 1993, 1996, 1999, 2002, 2006, 2010, 2014, 2018)
+- User names 3 artists or tracks they associate with that year
+- Agent checks against KB knowledge: what was actually prominent, what you got right, what you missed and why it mattered historically
+- Streak counter in SQLite tracks consecutive correct rounds to build a daily-return habit
+
+**Files touched:** new `prompts/games.py` with two structured prompts (one per game), a "Play" tab in `app.py`, simple game-state tracking in SQLite (scores, streaks, rounds played per game type).
+
+### Phase 22 — The Doorman
+
+**What it is in one sentence:** you play the Berghain Türsteher — the agent describes a fictional clubber in three sentences and you decide in or out, then learn whether a real doorman would agree and why.
+
+**Why it is the most shareable feature in the roadmap:** the Berghain door is already internet-famous. Everyone who knows anything about Berlin techno has heard of it. A game that explains the real reasoning — not a random yes/no — gives people something to screenshot, share, and argue about.
+
+**Why this phase is blocked on KB research:** the game only feels authentic if the agent's judgment is grounded in real Berghain door culture. The relevant knowledge is specific: Sven Marquardt's philosophy (he is the head Türsteher and wrote a memoir, *The Night Is Life*), the attitude-vs-appearance distinction (it is not primarily about what you wear), why groups of six are harder than pairs, why speaking English loudly in the queue is a bad signal, what changes between Saturday midnight and Sunday morning crowds. Without this in the KB, the agent defaults to generic "wear black, go alone" answers and the game breaks immediately for anyone who actually knows the scene.
+
+**Blocker:** research and ingest the Berghain cultural KB content before starting this phase. Sources: Sven Marquardt interviews, the memoir itself, r/berghain detailed threads (not the memes), long-form journalism (RA, Vice, The Guardian). See the KB research prerequisites below.
+
+### KB research prerequisites for the capstone
+
+The games are knowledge-quality-gated. This is the research work needed before Phase 22 specifically, and that improves Phase 21 quality throughout:
+
+| Content area | Primary sources | Why it matters |
+|---|---|---|
+| Berghain door culture | Sven Marquardt memoir, RA and Vice long-reads, r/berghain detailed threads | Required before Phase 22 can be built |
+| Rave etiquette and culture from scratch | DanceSafe, RA features, r/aves, r/techno | Improves Rave Wiki for first-timer and tourist use cases |
+| Harm reduction | DanceSafe, The Loop UK, TripSit combination chart, checkit! Vienna, Berlin Senate drug-checking programme | Allows the agent to answer harm-reduction questions accurately and responsibly within the app's stated scope |
+| City scene primers (top 15 cities only) | RA city guides, Boiler Room sets filtered by city, Mixmag scene features | Thin anchors for the Explore tab's agentic city briefing; not deep files for 100 cities |
+| Scene history depth | Simon Reynolds *Energy Flash*, *Der Klang der Familie* (Berlin oral history), RA retrospectives | Improves Era Challenge accuracy and Rave Wiki depth for scene-history questions |
+
+**Format for handing research back for ingestion:** one markdown file per topic, clear H2/H3 headings (they become chunk boundaries in ChromaDB), bullet-summarized facts not copy-pasted prose (copyright and chunking quality), specific names and BPMs and years not vague descriptions. Add `doc_type`, `scope`, and `source` as frontmatter on each file. Drop the file in `knowledge_base/`, run `uv run python ingest.py`. The pipeline is idempotent — safe to re-run any time.
+
+### Long-term product direction: global club map
+
+The Scene Passport data model (`venue_name`, `city`, `country`, `date_visited`) is the seed of a standalone product concept: a rave passport app, equivalent to Untappd for craft beer or Letterboxd for films, but for the global club-going community. No such app exists with real depth. The data is in this codebase from Phase 20 onward. The map visualization (a Leaflet or Mapbox layer in Streamlit, or a dedicated front-end if the project grows) is an additive layer that requires no schema changes. Noted here as a long-term direction, not a near-term deliverable.

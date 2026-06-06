@@ -313,6 +313,20 @@ rave-atlas/
 
 ---
 
+## What's next — capstone extension
+
+The core app covers event planning, music education, and set building. The next extension adds an engagement layer: features that bring people back on a daily or weekly cadence rather than just when planning a night out. All four share the same backend as the current app (same KB, same agent, same SQLite profile), surfaced in a new "Play" tab.
+
+**Scene Passport (Phase 20)** — a digital stamp book of every club you have been to. The more you check in, the more the agent treats you as an insider rather than a newcomer. Long-term: a world map with a pin for every club across every city you have ever visited. Ravers travel specifically to go to clubs and there is no good app for recording that journey. The data model built in Phase 20 is already correct for it; the map is a rendering layer added on top.
+
+**The Promoter Game (Phase 21)** — you book 3 real DJs for a real Berlin venue (example brief: "Tresor, Saturday midnight, 300 capacity, 15 euro door, hypnotic techno") and the agent scores your lineup on musical logic, scene credibility, and arc coherence. Replayable with a different venue and genre each round. Losing is educational because the agent explains its reasoning in scene terms.
+
+**Era Challenge (Phase 21)** — the agent picks a year from Berlin techno history and you name 3 artists or tracks from that year. Pub quiz format, two minutes, streak mechanic. Short enough to do daily; teaches real scene history with every round.
+
+**The Doorman (Phase 22)** — you play the Berghain Türsteher. The agent describes a fictional clubber in three sentences. You decide in or out. The agent tells you whether a real doorman would agree and why. The most shareable feature in the roadmap; requires a comprehensive Berghain door-culture knowledge base before it can be built credibly.
+
+---
+
 ## Known limitations
 
 | Limitation | Impact | Migration path |
