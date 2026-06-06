@@ -8,7 +8,7 @@ on:
 jobs:
   digest:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -21,7 +21,13 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
-      - name: Send Berlin weekend digest to Telegram
+      - name: Scrape official Berlin club sites
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: uv run python -m automation.club_scraper
+        continue-on-error: true
+
+      - name: Send Berlin digest to Telegram
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
