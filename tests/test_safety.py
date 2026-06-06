@@ -1,4 +1,4 @@
-"""Safety gate tests — validate_input, RateLimiter, fence, moderate."""
+"""Safety gate tests, validate_input, RateLimiter, fence, moderate."""
 from __future__ import annotations
 
 import pytest
@@ -17,11 +17,11 @@ class TestValidateInput:
         assert "empty" in reason.lower()
 
     def test_whitespace_only_rejected(self):
-        ok, _ = safety.validate_input("   ")
+        ok, _ = safety.validate_input(" ")
         assert not ok
 
     def test_too_short_rejected(self):
-        ok, _ = safety.validate_input("hi")  # 2 chars < MIN_INPUT_LENGTH=3
+        ok, _ = safety.validate_input("hi") # 2 chars < MIN_INPUT_LENGTH=3
         assert not ok
 
     def test_minimum_length_accepted(self):
@@ -60,8 +60,8 @@ class TestValidateInput:
         assert reason == ""
 
     def test_strips_whitespace_before_length_check(self):
-        # "  hi  " stripped is "hi" (2 chars) — should still be too short
-        ok, _ = safety.validate_input("  hi  ")
+        # " hi " stripped is "hi" (2 chars), should still be too short
+        ok, _ = safety.validate_input(" hi ")
         assert not ok
 
 
@@ -94,7 +94,7 @@ class TestRateLimiter:
         rl = safety.RateLimiter(max_requests=2, window_seconds=60)
         rl.allow("sess")
         rl.allow("sess")
-        assert not rl.allow("sess")[0]  # at limit
+        assert not rl.allow("sess")[0] # at limit
         # Backdate the window start to simulate expiry
         rl._state["sess"]["window_start"] -= 61
         allowed, _ = rl.allow("sess")
@@ -169,10 +169,10 @@ class TestModerate:
         mock_resp.raise_for_status = Mock()
         mocker.patch("requests.post", return_value=mock_resp)
         allowed, _ = safety.moderate("borderline content")
-        assert not allowed  # >= threshold blocks
+        assert not allowed # >= threshold blocks
 
     def test_drug_category_below_lenient_threshold_allowed(self, mocker):
-        """Words like 'rave' may score ~0.75 for drug categories — should pass."""
+        """Words like 'rave' may score ~0.75 for drug categories, should pass."""
         mock_resp = Mock()
         mock_resp.json.return_value = {
             "results": [{"category_scores": {
@@ -183,7 +183,7 @@ class TestModerate:
         mock_resp.raise_for_status = Mock()
         mocker.patch("requests.post", return_value=mock_resp)
         allowed, _ = safety.moderate("find rave events this weekend")
-        assert allowed  # 0.75 < _LENIENT_THRESHOLD (0.92) so should pass
+        assert allowed # 0.75 < _LENIENT_THRESHOLD (0.92) so should pass
 
     def test_drug_category_at_lenient_threshold_blocked(self, mocker):
         """Genuinely high drug scores (>= 0.92) should still be blocked."""
@@ -202,7 +202,7 @@ class TestModerate:
         import requests as req
         mocker.patch("requests.post", side_effect=req.exceptions.Timeout())
         allowed, scores = safety.moderate("any text")
-        assert allowed   # fail-open: API outage must not block users
+        assert allowed # fail-open: API outage must not block users
         assert scores == {}
 
     def test_generic_exception_fails_open(self, mocker):

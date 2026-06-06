@@ -1,5 +1,5 @@
 """
-Rave Atlas — Berlin club registry.
+Rave Atlas, Berlin club registry.
 
 A single authoritative table of Berlin clubs with their official website,
 events/program URL, street address, and a scrape hint. This module is the
@@ -17,11 +17,11 @@ Data provenance:
 The `scrape` field records what was empirically observed when fetching each
 site as plain HTML (markdown via a simple GET):
 
-  - "http":    server-rendered; events are readable with a plain HTTP fetch.
+  - "http": server-rendered; events are readable with a plain HTTP fetch.
                No headless browser needed. Cheapest to scrape.
   - "browser": JS-rendered shell; the events list is populated client-side,
                so a headless browser (Playwright) is required to see content.
-  - "ra":      events live primarily on Resident Advisor; use the existing
+  - "ra": events live primarily on Resident Advisor; use the existing
                find_events RA GraphQL tool rather than scraping the site.
   - "unknown": not yet probed.
 
@@ -41,12 +41,12 @@ class ClubEntry:
 
     name: str
     address: str
-    website: str | None          # official site root, or None if none listed
-    events_url: str | None       # direct events/program page, if known
-    berlin_de: str | None        # authoritative berlin.de detail page
-    instagram: str | None        # @handle, if confirmed
-    scrape: str                  # "http" | "browser" | "ra" | "unknown"
-    note: str = ""               # one-line description / caveat
+    website: str | None # official site root, or None if none listed
+    events_url: str | None # direct events/program page, if known
+    berlin_de: str | None # authoritative berlin.de detail page
+    instagram: str | None # @handle, if confirmed
+    scrape: str # "http" | "browser" | "ra" | "unknown"
+    note: str = "" # one-line description / caveat
 
 
 # ---------------------------------------------------------------------------
@@ -237,7 +237,7 @@ CLUBS: list[ClubEntry] = [
     ),
 
     # -----------------------------------------------------------------------
-    # RAW-Gelaende cluster (all at Revaler Str. 99 — multi-venue site)
+    # RAW-Gelaende cluster (all at Revaler Str. 99, multi-venue site)
     # -----------------------------------------------------------------------
     ClubEntry(
         "Cassiopeia", "Revaler Str. 99, 10245 Berlin (RAW-Gelaende)",
@@ -318,7 +318,7 @@ CLUBS: list[ClubEntry] = [
 
 # ---------------------------------------------------------------------------
 # Remaining registered clubs (berlin.de authoritative link; not deep-probed).
-# Kept lighter on purpose — they are mainstream, niche, or boutique venues
+# Kept lighter on purpose, they are mainstream, niche, or boutique venues
 # outside the app's core electronic focus, but included for completeness so
 # the agent can still surface an official link if asked.
 # ---------------------------------------------------------------------------
@@ -593,17 +593,17 @@ def clubs_by_scrape_method(method: str) -> list[ClubEntry]:
 
 if __name__ == "__main__":
     print(f"Total clubs registered : {len(ALL_CLUBS)}")
-    print(f"  deep-profiled        : {len(CLUBS)}")
-    print(f"  link-only            : {len(OTHER_CLUBS)}")
-    print(f"  with events_url      : {len(clubs_with_events_url())}")
+    print(f" deep-profiled : {len(CLUBS)}")
+    print(f" link-only : {len(OTHER_CLUBS)}")
+    print(f" with events_url : {len(clubs_with_events_url())}")
     print()
     for m in ("http", "browser", "ra", "unknown"):
         clubs = clubs_by_scrape_method(m)
-        print(f"  scrape={m:8s}: {len(clubs)}")
+        print(f" scrape={m:8s}: {len(clubs)}")
     print()
     # sanity: every entry has a resolvable link of some kind
     for c in ALL_CLUBS:
         assert c.website or c.berlin_de, f"{c.name} has no link at all"
     print("All clubs have at least one official link. OK.")
     real_websites = sum(1 for c in OTHER_CLUBS if c.website)
-    print(f"  other with real website: {real_websites}/{len(OTHER_CLUBS)}")
+    print(f" other with real website: {real_websites}/{len(OTHER_CLUBS)}")

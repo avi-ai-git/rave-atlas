@@ -21,8 +21,8 @@ import tools.setlist as setlist_mod
 def _llm_response(title: str = "Test Set", tracks: list[dict] | None = None) -> dict:
     if tracks is None:
         tracks = [
-            {"artist": "Ben Klock",        "title": "Subzero",   "reason": "Opening groover", "energy": 5},
-            {"artist": "Marcel Dettmann",   "title": "Seduction", "reason": "Peak driver",     "energy": 8},
+            {"artist": "Ben Klock", "title": "Subzero", "reason": "Opening groover", "energy": 5},
+            {"artist": "Marcel Dettmann", "title": "Seduction", "reason": "Peak driver", "energy": 8},
         ]
     payload = {
         "title": title,
@@ -110,8 +110,8 @@ class TestBuildSetlist:
 
     def test_energy_clamped_between_1_and_10(self, mocker):
         tracks = [
-            {"artist": "A", "title": "T1", "reason": "r", "energy": 0},    # below min
-            {"artist": "B", "title": "T2", "reason": "r", "energy": 11},   # above max
+            {"artist": "A", "title": "T1", "reason": "r", "energy": 0}, # below min
+            {"artist": "B", "title": "T2", "reason": "r", "energy": 11}, # above max
         ]
         mocker.patch("llm_client.chat", return_value=_llm_response(tracks=tracks))
         mocker.patch("requests.get", return_value=_deezer_miss())
@@ -121,8 +121,8 @@ class TestBuildSetlist:
 
     def test_malformed_track_without_artist_skipped(self, mocker):
         tracks = [
-            {"artist": "",         "title": "Ghost Track", "reason": "...", "energy": 5},
-            {"artist": "Ben Klock","title": "Subzero",     "reason": "ok",  "energy": 7},
+            {"artist": "", "title": "Ghost Track", "reason": "...", "energy": 5},
+            {"artist": "Ben Klock","title": "Subzero", "reason": "ok", "energy": 7},
         ]
         mocker.patch("llm_client.chat", return_value=_llm_response(tracks=tracks))
         mocker.patch("requests.get", return_value=_deezer_miss())
@@ -132,8 +132,8 @@ class TestBuildSetlist:
 
     def test_malformed_track_without_title_skipped(self, mocker):
         tracks = [
-            {"artist": "Ben Klock", "title": "",        "reason": "...", "energy": 5},
-            {"artist": "Dettmann",  "title": "Seduction","reason": "ok", "energy": 8},
+            {"artist": "Ben Klock", "title": "", "reason": "...", "energy": 5},
+            {"artist": "Dettmann", "title": "Seduction","reason": "ok", "energy": 8},
         ]
         mocker.patch("llm_client.chat", return_value=_llm_response(tracks=tracks))
         mocker.patch("requests.get", return_value=_deezer_miss())

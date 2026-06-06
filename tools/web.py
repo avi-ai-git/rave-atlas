@@ -36,19 +36,19 @@ def web_search(query: str, k: int = 5) -> dict[str, object]:
     cannot know (recent releases, tours, news, venues outside Berlin's depth).
 
     DO NOT call this tool for:
-    - Anything the music knowledge base covers   ->  use explain_music first
-    - Live or upcoming Berlin events             ->  use find_events instead
-    - Set lists                                  ->  use build_setlist instead
+    - Anything the music knowledge base covers -> use explain_music first
+    - Live or upcoming Berlin events -> use find_events instead
+    - Set lists -> use build_setlist instead
 
     Args:
         query: A focused natural-language search query.
-        k:     How many results to return (1 to 6). Default 5.
+        k: How many results to return (1 to 6). Default 5.
 
     Returns:
         {
-            "query":    str,
-            "results":  list[ {"title": str, "url": str, "snippet": str} ],
-            "grounded": bool,   # False means nothing usable was found;
+            "query": str,
+            "results": list[ {"title": str, "url": str, "snippet": str} ],
+            "grounded": bool, # False means nothing usable was found;
                                 # the agent must say so, not invent an answer.
         }
         Never raises: returns grounded=False on any error.
@@ -68,7 +68,7 @@ def web_search(query: str, k: int = 5) -> dict[str, object]:
     try:
         with DDGS() as ddgs:
             raw = list(ddgs.text(q, max_results=k))
-    except Exception as exc:  # network, rate limit, parsing, anything
+    except Exception as exc: # network, rate limit, parsing, anything
         logger.warning("web_search_failed", query=q[:80], error=str(exc)[:160])
         return {"query": q, "results": [], "grounded": False}
 
@@ -89,18 +89,18 @@ if __name__ == "__main__":
     import sys
 
     try:
-        sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+        sys.stdout.reconfigure(encoding="utf-8") # type: ignore[attr-defined]
     except (AttributeError, OSError):
         pass
 
     print("Test: web_search live query")
     out = web_search("Ben Klock 2024 release", k=3)
-    print(f"  grounded : {out['grounded']}")
-    print(f"  n_results: {len(out['results'])}")
+    print(f" grounded : {out['grounded']}")
+    print(f" n_results: {len(out['results'])}")
     for i, r in enumerate(out["results"], 1):
-        print(f"   [{i}] {r['title']}")
-        print(f"       {r['url']}")
-        print(f"       {r['snippet'][:120]}...")
+        print(f" [{i}] {r['title']}")
+        print(f" {r['url']}")
+        print(f" {r['snippet'][:120]}...")
 
     empty = web_search("", k=3)
     assert empty["grounded"] is False, "FAIL: empty query must be ungrounded"

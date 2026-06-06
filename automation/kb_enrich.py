@@ -4,8 +4,8 @@ Rave Atlas, knowledge-base enrichment from Reddit and the web.
 This is a CURATED, manually-run pipeline (not a live runtime tool) that grows the
 knowledge base from real community and web sources, then re-ingests it:
 
-    uv run python automation/kb_enrich.py            # all configured sources
-    uv run python automation/kb_enrich.py --dry-run  # fetch + summarise, don't write
+    uv run python automation/kb_enrich.py # all configured sources
+    uv run python automation/kb_enrich.py --dry-run # fetch + summarise, don't write
     uv run python automation/kb_enrich.py --no-ingest # write files, skip re-ingest
 
 How it works, and why it is safe:
@@ -56,7 +56,7 @@ COMMUNITY_DIR: Path = KB_DIR / "community"
 
 _USER_AGENT = "rave-atlas-kb-enrich/1.0 (educational; contact via repo)"
 _HTTP_TIMEOUT = 20
-_REDDIT_PAUSE = 2.0  # be polite to Reddit's public endpoint
+_REDDIT_PAUSE = 2.0 # be polite to Reddit's public endpoint
 
 
 # ── Source configuration ──────────────────────────────────────────────────────
@@ -65,15 +65,15 @@ _REDDIT_PAUSE = 2.0  # be polite to Reddit's public endpoint
 # count modest; quality beats volume for a RAG knowledge base.
 
 REDDIT_SOURCES: list[dict[str, str]] = [
-    {"subreddit": "aves",            "topic": "rave culture, etiquette, what to expect, harm reduction"},
-    {"subreddit": "Techno",          "topic": "techno genres, artists, labels, scene discussion"},
+    {"subreddit": "aves", "topic": "rave culture, etiquette, what to expect, harm reduction"},
+    {"subreddit": "Techno", "topic": "techno genres, artists, labels, scene discussion"},
     {"subreddit": "BerghainTrainers","topic": "Berlin club door culture, Berghain, what to wear and do"},
     {"subreddit": "electronicmusic", "topic": "electronic music history, genres, production"},
 ]
 
 WEB_SOURCES: list[dict[str, str]] = [
     # {"url": "https://example.com/guide-to-techno", "name": "techno_guide",
-    #  "topic": "history and subgenres of techno"},
+    # "topic": "history and subgenres of techno"},
 ]
 
 
@@ -245,7 +245,7 @@ def enrich(dry_run: bool = False, do_ingest: bool = True) -> list[Path]:
 
 if __name__ == "__main__":
     try:
-        sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+        sys.stdout.reconfigure(encoding="utf-8") # type: ignore[attr-defined]
     except (AttributeError, OSError):
         pass
 
@@ -261,5 +261,5 @@ if __name__ == "__main__":
     else:
         print(f"\nWrote {len(files)} community file(s):")
         for f in files:
-            print(f"  {f}")
+            print(f" {f}")
         print("\nReview them in knowledge_base/community/ before trusting the content.")

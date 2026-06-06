@@ -1,5 +1,5 @@
 """
-Rave Atlas — club registry, find_club tool, and club_scraper tests.
+Rave Atlas, club registry, find_club tool, and club_scraper tests.
 
 All offline: the scraper's network fetch and LLM extraction are mocked, so
 these run deterministically in CI with no API keys and no HTTP.
@@ -78,7 +78,7 @@ class TestFindClub:
         from tools.clubs import find_club
         r = find_club("Void Club")
         assert r["found"] is True
-        assert r["berlin_de"]  # link-only clubs still carry the berlin.de page
+        assert r["berlin_de"] # link-only clubs still carry the berlin.de page
 
     def test_return_shape(self):
         from tools.clubs import find_club
@@ -143,7 +143,7 @@ class TestExtractEvents:
             "text": json.dumps({"events": [
                 {"date": "2026-06-06", "name": "Klubnacht",
                  "lineup": "Steffi, Barker", "info": "Saturday, 19 euro"},
-                {"date": "", "name": "", "lineup": "x", "info": "y"},  # dropped: no name
+                {"date": "", "name": "", "lineup": "x", "info": "y"}, # dropped: no name
             ]})
         }
         monkeypatch.setattr(scraper.llm_client, "chat", lambda **kw: fake)
@@ -158,7 +158,7 @@ class TestExtractEvents:
         def _boom(**kw):
             raise AssertionError("LLM should not be called for empty text")
         monkeypatch.setattr(scraper.llm_client, "chat", _boom)
-        assert scraper.extract_events("X", "   ") == []
+        assert scraper.extract_events("X", " ") == []
 
     def test_llm_failure_returns_empty(self, monkeypatch):
         import automation.club_scraper as scraper
@@ -197,7 +197,7 @@ class TestScrapeAll:
     def test_fetch_failure_marked_negative(self, monkeypatch):
         import automation.club_scraper as scraper
 
-        monkeypatch.setattr(scraper, "fetch", lambda url: None)  # all fetches fail
+        monkeypatch.setattr(scraper, "fetch", lambda url: None) # all fetches fail
         monkeypatch.setattr(scraper, "fetch_browser", lambda url: None)
         summary = scraper.scrape_all(dry_run=True, limit=2)
         assert all(v == -1 for v in summary.values())

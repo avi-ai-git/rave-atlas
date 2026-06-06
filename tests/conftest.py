@@ -11,10 +11,10 @@ def clear_module_caches():
     independent regardless of execution order.
 
     Clears:
-    - tools.artists._ARTIST_CACHE  (in-memory artist enrichment cache)
-    - tools.setlist._DEEZER_CACHE  (in-memory Deezer search cache)
-    - llm_client._cache            (in-memory LLM response cache)
-    - safety._last_messages        (per-session duplicate-detection state)
+    - tools.artists._ARTIST_CACHE (in-memory artist enrichment cache)
+    - tools.setlist._DEEZER_CACHE (in-memory Deezer search cache)
+    - llm_client._cache (in-memory LLM response cache)
+    - safety._last_messages (per-session duplicate-detection state)
     """
     from tools import artists as _artists
     from tools import setlist as _setlist

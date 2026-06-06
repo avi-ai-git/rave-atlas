@@ -1,13 +1,12 @@
 """
-Rave Atlas — enrich_artist tool.
+Rave Atlas, enrich_artist tool.
 
 Fetches label lineage, genre tags, and notable releases for an artist.
 Discogs is the primary source (richest label data for electronic music);
 MusicBrainz is the fallback for artists not covered by Discogs or when
 the Discogs token is absent.
 
-Used by the agent to explain why a specific lineup is worth attending —
-"this artist records on Klockworks, Ben Klock's own imprint" is grounded
+Used by the agent to explain why a specific lineup is worth attending, "this artist records on Klockworks, Ben Klock's own imprint" is grounded
 and concrete rather than a vague genre assertion.
 """
 
@@ -160,7 +159,7 @@ def _discogs_enrich(name: str) -> dict[str, Any] | None:
                 if s not in genres:
                     genres.append(s)
     except requests.RequestException:
-        pass  # genres stay empty; caller will still get labels
+        pass # genres stay empty; caller will still get labels
 
     # Profile → first two sentences as summary facts
     profile = artist_data.get("profile", "").strip()
@@ -252,7 +251,7 @@ def _musicbrainz_enrich(name: str) -> dict[str, Any] | None:
 
     return {
         "name": canonical,
-        "labels": [],  # MB artist endpoint doesn't surface labels directly
+        "labels": [], # MB artist endpoint doesn't surface labels directly
         "genres": genres,
         "notable_releases": notable_releases,
         "summary_facts": summary_facts,
@@ -273,8 +272,8 @@ def enrich_artist(name: str) -> dict[str, Any]:
     - Background context to decide if a lineup is worth attending
 
     DO NOT call this tool for:
-    - Upcoming tour dates or live events  →  use find_events instead
-    - General genre or scene questions    →  use explain_music instead
+    - Upcoming tour dates or live events → use find_events instead
+    - General genre or scene questions → use explain_music instead
 
     Args:
         name: Artist name as it would appear on a release (e.g. "Ben Klock",
@@ -282,12 +281,12 @@ def enrich_artist(name: str) -> dict[str, Any]:
 
     Returns:
         {
-            "name":              str  — canonical artist name from the data source,
-            "labels":            list — record labels / imprints the artist records on,
-            "genres":            list — genre and style tags,
-            "notable_releases":  list — recent / key release titles with year,
-            "summary_facts":     list — 1-2 sentence background facts,
-            "source":            str  — "discogs", "musicbrainz", or "none"
+            "name": str, canonical artist name from the data source,
+            "labels": list, record labels / imprints the artist records on,
+            "genres": list, genre and style tags,
+            "notable_releases": list, recent / key release titles with year,
+            "summary_facts": list, 1-2 sentence background facts,
+            "source": str, "discogs", "musicbrainz", or "none"
         }
         Returns empty lists (not an exception) when the artist is not found
         or all APIs are unavailable.
@@ -333,9 +332,9 @@ if __name__ == "__main__":
     assert result["name"], "FAIL: name must not be empty"
     assert result["source"] in ("discogs", "musicbrainz", "none"), "FAIL: unexpected source value"
 
-    print(f"source           : {result['source']}")
-    print(f"labels           : {result['labels']}")
-    print(f"genres           : {result['genres']}")
+    print(f"source : {result['source']}")
+    print(f"labels : {result['labels']}")
+    print(f"genres : {result['genres']}")
     print(f"notable_releases : {result['notable_releases'][:3]}")
 
     # Cache hit test

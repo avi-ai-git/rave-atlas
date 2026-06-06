@@ -1,8 +1,8 @@
 """
-Rave Atlas — structured logging.
+Rave Atlas, structured logging.
 
 Every module calls get_logger(__name__) to get a bound structlog logger.
-Output is newline-delimited JSON to stdout — easy to ingest into LangSmith,
+Output is newline-delimited JSON to stdout, easy to ingest into LangSmith,
 Datadog, or any log pipeline without post-processing.
 
 Why structlog over stdlib logging: processors let us attach context (model,
