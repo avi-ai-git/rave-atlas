@@ -1,29 +1,36 @@
 """
-Rave Atlas — weekend digest → Telegram (standalone, schedule-friendly).
+Rave Atlas, weekend digest → Telegram (standalone, schedule-friendly).
 
 WHY THIS IS SEPARATE FROM THE STREAMLIT APP
 -------------------------------------------
 Streamlit Community Cloud spins the app down when no browser is connected, so
 the in-process APScheduler (automation/weekend_digest.py) can't be relied on to
 fire on Friday morning. This module is a self-contained script designed to be
-run by an external scheduler — a GitHub Actions cron (see
+run by an external scheduler, a GitHub Actions cron (see
 .github/workflows/weekend-digest.yml). It does NOT import Streamlit and does NOT
 need the app to be awake.
 
 WHAT IT DOES
 ------------
-1. Computes the upcoming Fri → Tue window (Berlin's real weekend).
+1. Computes the upcoming Fri to Tue window (Berlin's real weekend).
 2. Fetches live Berlin events from Resident Advisor via find_events.
-3. Formats a compact Telegram message — one line per event with the RA link to
-   details/tickets — no LLM call, so there's nothing to fail or pay for.
-4. Sends it via the Telegram Bot API.
+3. Asks an LLM to reason over the weekend and write a short briefing that
+   explains what the standout nights are about and what to look for, rather
+   than dumping a bare list. Reason first, then the lineup.
+4. Appends a compact lineup with each event linked to its RA page.
+5. Sends it all via the Telegram Bot API.
+
+Model strategy: Mistral Large writes the briefing first (cheap, and the same
+key already powers moderation), Claude Haiku via OpenRouter is the fallback,
+and if both are unavailable the digest still sends with just the lineup. The
+message is always useful, never blocked on an LLM being up.
 
 It is Berlin-only by design: the weekend digest is the Berlin concierge feature.
 
 CONFIG (env vars / GitHub Actions secrets)
 ------------------------------------------
-    TELEGRAM_BOT_TOKEN   from @BotFather
-    TELEGRAM_CHAT_ID     the chat/channel to post to (user, group, or @channel)
+    TELEGRAM_BOT_TOKEN from @BotFather
+    TELEGRAM_CHAT_ID the chat/channel to post to (user, group, or @channel)
 
 If either is missing the script logs and exits cleanly (no error), so the repo
 stays runnable for contributors who haven't set Telegram up.
@@ -39,6 +46,8 @@ from datetime import date, timedelta
 import requests
 
 import config
+import llm_client
+import textfmt
 from logging_config import get_logger
 from tools.events import find_events
 
@@ -49,6 +58,11 @@ _HTTP_TIMEOUT = 15
 _MAX_EVENTS = 12
 _TELEGRAM_MAX_CHARS = 4096
 
+# Briefing model order: Mistral Large first (cheap, key already present for
+# moderation), then Claude Haiku via OpenRouter. If both fail the digest still
+# sends with just the lineup section.
+_BRIEFING_MODELS = ("mistral-large-latest", "anthropic/claude-haiku-4.5")
+
 
 # ── Date window ────────────────────────────────────────────────────────────────
 
@@ -58,28 +72,27 @@ def _digest_window(today: date | None = None) -> tuple[date, date, str]:
 
     This makes the digest useful whenever it is triggered, not just on Fridays:
 
-    - Mon/Tue/Wed: today through Sunday — "what is still on this week"
-    - Thu: tomorrow (Fri) through Tuesday — "plan ahead for the weekend"
-    - Fri/Sat/Sun: the Friday that opened this weekend through Tuesday —
-      "it is happening right now / still going"
+    - Mon/Tue/Wed: today through Sunday, "what is still on this week"
+    - Thu: tomorrow (Fri) through Tuesday, "plan ahead for the weekend"
+    - Fri/Sat/Sun: the Friday that opened this weekend through Tuesday, "it is happening right now / still going"
 
     The old _weekend_window() always looked for the NEXT Friday, so firing on
     Saturday showed next weekend instead of the current one. This fixes that.
     """
     today = today or date.today()
-    wd = today.weekday()  # Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6
+    wd = today.weekday() # Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6
 
-    if wd <= 2:  # Mon, Tue, Wed
+    if wd <= 2: # Mon, Tue, Wed
         date_from = today
-        date_to = today + timedelta(days=6 - wd)  # through Sunday
+        date_to = today + timedelta(days=6 - wd) # through Sunday
         label = f"this week ({date_from.strftime('%d %b')} to {date_to.strftime('%d %b %Y')})"
-    elif wd == 3:  # Thu
-        date_from = today + timedelta(days=1)   # Friday
-        date_to = date_from + timedelta(days=4)  # Tuesday
+    elif wd == 3: # Thu
+        date_from = today + timedelta(days=1) # Friday
+        date_to = date_from + timedelta(days=4) # Tuesday
         label = f"this weekend ({date_from.strftime('%d %b')} to {date_to.strftime('%d %b %Y')})"
-    else:  # Fri=4, Sat=5, Sun=6
-        date_from = today - timedelta(days=wd - 4)  # anchor to this Friday
-        date_to = date_from + timedelta(days=4)      # through Tuesday
+    else: # Fri=4, Sat=5, Sun=6
+        date_from = today - timedelta(days=wd - 4) # anchor to this Friday
+        date_to = date_from + timedelta(days=4) # through Tuesday
         label = f"this weekend ({date_from.strftime('%d %b')} to {date_to.strftime('%d %b %Y')})"
 
     return date_from, date_to, label
@@ -91,7 +104,7 @@ def _load_scraped_events(date_from: str, date_to: str) -> list[dict]:
     """
     Load events scraped from official club websites (club_events SQLite table).
 
-    These come from automation/club_scraper.py — venues not on Resident Advisor
+    These come from automation/club_scraper.py, venues not on Resident Advisor
     like Renate, Heideglühen, Fitzroy, and any club whose events_url was scraped.
     Returns an empty list if the table doesn't exist yet (scraper hasn't run).
 
@@ -114,18 +127,91 @@ def _load_scraped_events(date_from: str, date_to: str) -> list[dict]:
             {
                 "name": r[3],
                 "venue": r[0],
-                "url": r[1] or "",   # official website link, not RA
+                "url": r[1] or "", # official website link, not RA
                 "start_time": r[2],
                 "lineup": r[4] or "",
                 "price": r[5] or "",
                 "source": "official",
             }
             for r in rows
-            if r[3]  # skip empty names
+            if r[3] # skip empty names
         ]
     except Exception as exc:
         logger.warning("scraped_events_load_failed", error=str(exc)[:120])
         return []
+
+
+# ── Reason-first briefing (LLM) ─────────────────────────────────────────────────
+
+def _build_briefing_prompt(events: list[dict], label: str) -> str:
+    """
+    Build the prompt that asks the model to reason over the weekend and explain
+    the standout nights, rather than list them. Events are passed as compact
+    lines so the model has the real lineup, venue, time, price, and genres.
+    """
+    lines: list[str] = []
+    for e in events[:_MAX_EVENTS]:
+        lineup = ", ".join((e.get("lineup") or [])[:6])
+        genres = ", ".join(e.get("genres") or [])
+        when = " ".join(b for b in (e.get("date_label"), e.get("time_label")) if b)
+        lines.append(
+            f"- {e.get('name', '')} at {e.get('venue', '')}"
+            f"{(' (' + e.get('area') + ')') if e.get('area') else ''}. "
+            f"{when}. Price {e.get('price', 'unknown')}. "
+            f"Genres {genres or 'unlisted'}. Lineup {lineup or 'unlisted'}."
+        )
+    events_block = "\n".join(lines) if lines else "(no events returned)"
+
+    return f"""\
+You are a Berlin regular writing a short weekend briefing for friends who know
+the scene. Reason first, then recommend.
+
+Here are the Berlin events on Resident Advisor for {label}:
+{events_block}
+
+Write a briefing that EXPLAINS the weekend, it does not just list it:
+- Open with the shape of the weekend in one or two sentences.
+- Then the two or three nights that stand out and exactly why: the sound, the
+  lineup, the room and the crowd, and what to look for on the floor. Name
+  venues, artists, and labels. Say who each night is really for.
+- Close with one practical line on doors, timing, or budget.
+
+Rules: be specific and honest, flag a tradeoff if a night has one. No hype
+words (avoid amazing, epic, must-see, insane, wild). No markdown, no headers,
+no bullet points, write plain short paragraphs. Do not use em dashes or en
+dashes; use commas or full stops. Refer to events by name in plain text, do
+not paste any links. Keep it under 200 words.
+"""
+
+
+def _write_briefing(events: list[dict], label: str) -> str:
+    """
+    Ask the model to write the reason-first briefing. Tries each model in
+    _BRIEFING_MODELS in order and returns the first success. Returns "" when no
+    model is reachable, in which case the digest still sends with just the
+    lineup section, so a model outage never blocks the Friday message.
+    """
+    if not events:
+        return ""
+    prompt = _build_briefing_prompt(events, label)
+    for model_id in _BRIEFING_MODELS:
+        try:
+            result = llm_client.chat(
+                messages=[{"role": "user", "content": prompt}],
+                model=model_id,
+                temperature=0.5,
+            )
+            text = (result.get("text") or "").strip()
+            if text:
+                # Enforce house typography regardless of what the model emits
+                # (models routinely ignore "no em dashes" in the prompt).
+                text = textfmt.humanize(text)
+                logger.info("telegram_briefing_written", model=model_id, chars=len(text))
+                return text
+        except Exception as exc:
+            logger.warning("telegram_briefing_model_failed", model=model_id, error=str(exc)[:120])
+    logger.warning("telegram_briefing_unavailable")
+    return ""
 
 
 # ── Message formatting (pure, testable) ────────────────────────────────────────
@@ -135,72 +221,91 @@ def _esc(text: str) -> str:
     return html.escape(text or "", quote=False)
 
 
+def _event_when(evt: dict) -> str:
+    """Readable 'Sat 6 Jun, 23:00 to 06:00' line from the cleaned event fields."""
+    date_text = evt.get("date_label") or (evt.get("date") or "")[:10]
+    time_text = evt.get("time_label") or evt.get("start_time") or ""
+    return ", ".join(b for b in (date_text, time_text) if b)
+
+
 def format_digest_html(
     ra_events: list[dict],
     scraped_events: list[dict],
     date_from: str,
     date_to: str,
     label: str = "",
+    briefing: str = "",
 ) -> str:
     """
     Build the Telegram message body (HTML parse mode).
 
-    Merges RA events and scraped official-site events. RA events come first
-    (live data, ticket links). Scraped events follow under a second heading
-    when present (venues not on RA). Both sections link to their source.
+    Structure is reason-first: the LLM briefing leads, explaining what the
+    standout nights are about and what to look for. The lineup follows, with
+    each event linked to its source. RA events come first (live data, ticket
+    links); scraped official-site events follow under a second heading when
+    present (venues not on RA).
+
+    `briefing` is the LLM-written prose. It is escaped and inserted verbatim;
+    if it is empty (model unavailable) the digest degrades gracefully to just
+    the lineup, so the Friday message always goes out.
     """
     header_label = label or f"{date_from} to {date_to}"
-    header = f"🎛️ <b>Berlin {header_label}</b>"
-
-    lines = [header, ""]
+    lines = [f"<b>Berlin, {header_label}</b>", ""]
 
     if not ra_events and not scraped_events:
         lines.append(
-            "No listings found for this window. "
+            "No listings came back for this window. "
             'Check <a href="https://ra.co/events/de/berlin">ra.co/berlin</a> directly.'
         )
         return "\n".join(lines)
 
-    # ── RA events ──
+    # ── Reason-first briefing ──
+    if briefing:
+        # Escape the model text, then keep its paragraph breaks.
+        for para in briefing.strip().split("\n"):
+            lines.append(_esc(para.strip()))
+        lines.append("")
+
+    # ── The lineup (RA) ──
     if ra_events:
-        lines.append("<b>On Resident Advisor</b>")
+        lines.append("<b>The lineup</b>")
         for evt in ra_events[:_MAX_EVENTS]:
             name = _esc(evt.get("name") or "Untitled event")
             url = evt.get("url") or ""
             venue = _esc(evt.get("venue") or "")
-            when = _esc(evt.get("start_time") or evt.get("date") or "")
+            when = _esc(_event_when(evt))
             price = _esc(evt.get("price") or "")
+            genres = _esc(", ".join((evt.get("genres") or [])[:3]))
             title = f'<a href="{html.escape(url, quote=True)}">{name}</a>' if url else f"<b>{name}</b>"
-            meta_bits = [b for b in (venue, when, price) if b]
+            meta_bits = [b for b in (venue, when, genres, price) if b]
             lines.append(f"• {title}")
             if meta_bits:
-                lines.append(f"  <i>{'  ·  '.join(meta_bits)}</i>")
+                lines.append(f" <i>{' · '.join(meta_bits)}</i>")
 
     # ── Official site events (not on RA) ──
     if scraped_events:
         lines.append("")
-        lines.append("<b>Not on RA — official sites</b>")
+        lines.append("<b>Not on RA, from official sites</b>")
         for evt in scraped_events[:8]:
             name = _esc(evt.get("name") or "Untitled event")
             url = evt.get("url") or ""
             venue = _esc(evt.get("venue") or "")
-            when = _esc(evt.get("start_time") or "")
+            when = _esc(_event_when(evt) or evt.get("start_time") or "")
             lineup = _esc((evt.get("lineup") or "")[:80])
             title = f'<a href="{html.escape(url, quote=True)}">{name}</a>' if url else f"<b>{name}</b>"
             meta_bits = [b for b in (venue, when) if b]
             lines.append(f"• {title}")
             if meta_bits:
-                lines.append(f"  <i>{'  ·  '.join(meta_bits)}</i>")
+                lines.append(f" <i>{' · '.join(meta_bits)}</i>")
             if lineup:
-                lines.append(f"  <i>{lineup}</i>")
+                lines.append(f" <i>{lineup}</i>")
 
     lines.append("")
-    lines.append('🎟 Tap titles for details. RA links go to tickets; others to the club site.')
-    lines.append(f'<i>window: {date_from} to {date_to}</i>')
+    lines.append("Tap a title for the full details and tickets.")
 
     msg = "\n".join(lines)
     if len(msg) > _TELEGRAM_MAX_CHARS:
-        msg = msg[: _TELEGRAM_MAX_CHARS - 1].rstrip() + "…"
+        msg = msg[: _TELEGRAM_MAX_CHARS - 1].rstrip() + "..."
     return msg
 
 
@@ -211,7 +316,7 @@ def send_telegram_message(text: str) -> bool:
     POST a message to the configured Telegram chat. Returns True on success.
 
     No-ops (returns False, logs) when TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID are
-    not configured — so this is safe to run anywhere.
+    not configured, so this is safe to run anywhere.
     """
     token = config.TELEGRAM_BOT_TOKEN
     chat_id = config.TELEGRAM_CHAT_ID
@@ -246,15 +351,14 @@ def run() -> bool:
     Fetch Berlin events from all sources, format, and send to Telegram.
 
     Sources:
-    1. Resident Advisor (GraphQL, live) — always attempted.
-    2. Official club websites (SQLite club_events table) — included when the
+    1. Resident Advisor (GraphQL, live), always attempted.
+    2. Official club websites (SQLite club_events table), included when the
        club scraper has been run in the same job or previously. Empty list if
        the table doesn't exist yet.
 
     Date window adapts to today's weekday so manual triggers are always
     relevant, not stuck pointing at the next Friday.
     """
-    print(f"[weekend_telegram] v2 running from {__file__}", flush=True)
     d_from, d_to, label = _digest_window()
     date_from, date_to = d_from.isoformat(), d_to.isoformat()
 
@@ -278,7 +382,10 @@ def run() -> bool:
         scraped=len(scraped_events),
     )
 
-    message = format_digest_html(ra_events, scraped_events, date_from, date_to, label)
+    briefing = _write_briefing(ra_events, label)
+    message = format_digest_html(
+        ra_events, scraped_events, date_from, date_to, label, briefing=briefing
+    )
     ok = send_telegram_message(message)
     logger.info(
         "telegram_digest_done",
@@ -293,12 +400,12 @@ def run() -> bool:
 
 if __name__ == "__main__":
     try:
-        sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+        sys.stdout.reconfigure(encoding="utf-8") # type: ignore[attr-defined]
     except (AttributeError, OSError):
         pass
 
     success = run()
-    # Exit 0 even when Telegram is unconfigured — a missing optional integration
+    # Exit 0 even when Telegram is unconfigured, a missing optional integration
     # is not a CI failure. Only a hard send error after a valid attempt is non-zero.
     if not success and config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_ID:
         print("Telegram send failed despite configured credentials.", file=sys.stderr)
