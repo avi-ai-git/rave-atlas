@@ -44,12 +44,15 @@ import sqlite3
 import sys
 from typing import Any
 
+import subprocess
+import sys as _sys
+
 import requests
 
 import config
 import llm_client
 from logging_config import get_logger
-from tools.club_registry import ClubEntry, clubs_by_scrape_method
+from tools.club_registry import ALL_CLUBS, ClubEntry, clubs_by_scrape_method
 
 logger = get_logger(__name__)
 
@@ -98,6 +101,44 @@ def fetch(url: str) -> str | None:
         return resp.text
     except Exception as exc:
         logger.warning("club_fetch_failed", url=url, error=str(exc)[:160])
+        return None
+
+
+def fetch_browser(url: str) -> str | None:
+    """
+    Fetch a JS-rendered URL using Playwright (headless Chromium).
+
+    Only called for clubs marked scrape=="browser". Playwright launches a
+    real browser, waits for network idle (so JS events are injected), and
+    returns the fully-rendered HTML. Falls back gracefully if Playwright is
+    not installed — logs a warning and returns None.
+
+    Playwright is an optional dep: it is only imported here (not at module
+    level) so the rest of the scraper works fine without it.
+    """
+    try:
+        from playwright.sync_api import sync_playwright  # noqa: PLC0415
+    except ImportError:
+        logger.warning(
+            "playwright_not_installed",
+            hint="Run: uv add playwright && playwright install chromium",
+            url=url,
+        )
+        return None
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(
+                user_agent=_USER_AGENT,
+                java_script_enabled=True,
+            )
+            page.goto(url, wait_until="networkidle", timeout=45_000)
+            html = page.content()
+            browser.close()
+            return html
+    except Exception as exc:
+        logger.warning("club_fetch_browser_failed", url=url, error=str(exc)[:200])
         return None
 
 
@@ -248,13 +289,17 @@ def scrape_all(
                     passed in (not generated here) because Date.now-style calls
                     are avoided in this codebase's scripted paths.
     """
-    clubs = [c for c in clubs_by_scrape_method("http") if c.events_url]
+    clubs = [c for c in ALL_CLUBS if c.scrape in ("http", "browser") and c.events_url]
     if limit:
         clubs = clubs[:limit]
 
     summary: dict[str, int] = {}
     for club in clubs:
-        html = fetch(club.events_url)  # type: ignore[arg-type]
+        # Route to the cheapest method that works for this club's site.
+        if club.scrape == "browser":
+            html = fetch_browser(club.events_url)  # type: ignore[arg-type]
+        else:
+            html = fetch(club.events_url)  # type: ignore[arg-type]
         if html is None:
             summary[club.name] = -1  # fetch failed
             continue
@@ -263,7 +308,7 @@ def scrape_all(
         summary[club.name] = len(events)
 
         if dry_run:
-            print(f"\n=== {club.name} ({club.events_url}) — {len(events)} events ===")
+            print(f"\n=== {club.name} [{club.scrape}] ({club.events_url}) — {len(events)} events ===")
             for ev in events[:8]:
                 print(f"  {ev['date'] or '????-??-??'}  {ev['name']}")
                 if ev["lineup"]:

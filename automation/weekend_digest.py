@@ -47,24 +47,59 @@ _GLOBAL_SESSION = "__global__"
 
 # ── Date helpers ──────────────────────────────────────────────────────────────
 
-def _this_friday() -> date:
-    """Return the date of the current or next Friday."""
+def _digest_window() -> tuple[str, str, str, str]:
+    """
+    Return (date_from, date_to, period_label, digest_type) based on today.
+
+    The window and framing adapt to the actual day so the digest is always
+    relevant, not a stale "next Friday" placeholder when opened mid-week or
+    on the weekend itself.
+
+    Weekday logic (Mon=0 ... Sun=6):
+    - Mon/Tue/Wed (0-2) -> "midweek": events from today through Sunday.
+      Opening the digest on Monday should show what is still ahead this week,
+      not fast-forward to next Friday.
+    - Thu (3) -> "preview": upcoming Friday through Tuesday. The weekend is
+      24 hours away; give people time to plan.
+    - Fri/Sat/Sun (4-6) -> "weekend": anchor to the Friday that opened the
+      current weekend, through Tuesday. Sat or Sun should still show THIS
+      weekend, not next week.
+
+    digest_type: "midweek" | "preview" | "weekend"
+    period_label: human-readable title injected into the digest header.
+    """
     today = date.today()
-    days_ahead = (4 - today.weekday()) % 7  # 4 = Friday
-    return today if days_ahead == 0 else today + timedelta(days=days_ahead)
+    wd = today.weekday()  # Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6
 
+    if wd <= 2:  # Mon, Tue, Wed
+        days_to_sunday = 6 - wd
+        date_from = today
+        date_to = today + timedelta(days=days_to_sunday)
+        label = f"Midweek in Berlin, {today.strftime('%d %b %Y')}"
+        dtype = "midweek"
+    elif wd == 3:  # Thu
+        friday = today + timedelta(days=1)
+        tuesday = friday + timedelta(days=4)
+        date_from = friday
+        date_to = tuesday
+        label = (
+            f"Weekend Preview, {friday.strftime('%d %b')} "
+            f"to {tuesday.strftime('%d %b %Y')}"
+        )
+        dtype = "preview"
+    else:  # Fri=4, Sat=5, Sun=6
+        days_since_friday = wd - 4
+        friday = today - timedelta(days=days_since_friday)
+        tuesday = friday + timedelta(days=4)
+        date_from = friday
+        date_to = tuesday
+        label = (
+            f"This Weekend in Berlin, {friday.strftime('%d %b')} "
+            f"to {tuesday.strftime('%d %b %Y')}"
+        )
+        dtype = "weekend"
 
-def _digest_date_range() -> tuple[str, str]:
-    """
-    Return (date_from, date_to) covering Friday through the following Tuesday.
-
-    The user confirmed a Fri → Mon/Tue horizon rather than Fri-Sun-only so
-    the digest captures the full Berlin weekend (many events run Sunday morning
-    and some clubs run through Monday bank holidays).
-    """
-    friday = _this_friday()
-    tuesday = friday + timedelta(days=4)
-    return friday.isoformat(), tuesday.isoformat()
+    return date_from.isoformat(), date_to.isoformat(), label, dtype
 
 
 # ── Session enumeration ───────────────────────────────────────────────────────
@@ -97,13 +132,16 @@ def _build_digest_prompt(
     date_to: str,
     events: list[dict[str, Any]],
     profile: dict[str, Any] | None,
+    period_label: str = "",
+    digest_type: str = "weekend",
 ) -> str:
     """
-    Build the LLM prompt for the weekend digest.
+    Build the LLM prompt for the digest.
 
-    The prompt is lean: event JSON + taste profile (if any) + explicit
-    output format. The LLM should produce markdown that renders cleanly
-    in the Streamlit digest tab.
+    The intro, header, and framing adapt to digest_type so a Monday midweek
+    digest reads differently from a Friday night "it is happening right now"
+    digest or a Thursday preview. The date_from/date_to are always real ISO
+    dates computed by _digest_window().
     """
     events_block = json.dumps(events[:12], ensure_ascii=False, indent=2)
 
@@ -115,7 +153,7 @@ def _build_digest_prompt(
         if la := profile.get("loved_artists"):
             parts.append(f"Loved artists: {', '.join(la)}")
         if bc := profile.get("budget_ceiling"):
-            parts.append(f"Budget ceiling: €{bc}")
+            parts.append(f"Budget ceiling: EUR{bc}")
         if pa := profile.get("preferred_areas"):
             parts.append(f"Preferred areas: {', '.join(pa)}")
         if parts:
@@ -128,29 +166,54 @@ def _build_digest_prompt(
         else ""
     )
 
+    if digest_type == "midweek":
+        intro = (
+            "You are writing a midweek events digest for a Berlin electronic music fan. "
+            "It is mid-week. Cover what is still worth going to before the weekend."
+        )
+        header = f"## This Week in Berlin ({date_from} to {date_to})"
+        top_picks_label = f"Worth going to this week{' for you' if profile else ''}"
+        extra_section = "Worth keeping an eye on"
+    elif digest_type == "preview":
+        intro = (
+            "You are writing a Thursday weekend preview for a Berlin electronic music fan. "
+            "The weekend is 24 hours away. Help them plan ahead."
+        )
+        header = f"## Weekend Preview ({date_from} to {date_to})"
+        top_picks_label = f"Top picks for this weekend{' for you' if profile else ''}"
+        extra_section = "Also on the radar"
+    else:  # weekend
+        intro = (
+            "You are writing the weekend digest for a Berlin electronic music fan. "
+            "The weekend is here or already underway. Be direct and decisive."
+        )
+        header = f"## {period_label or ('This Weekend in Berlin (' + date_from + ' to ' + date_to + ')')}"
+        top_picks_label = f"Top picks{' for you' if profile else ''}"
+        extra_section = "Worth knowing"
+
     return f"""\
-You are writing the Friday-morning weekend digest for a Berlin electronic music fan.
+{intro}
 
 Date window: {date_from} to {date_to}{profile_block}
 
-Berlin events this weekend (JSON). Each event has a "url" field, its Resident
+Berlin events this period (JSON). Each event has a "url" field, its Resident
 Advisor page:
 {events_block}{no_events_note}
 
 Write a digest in clean markdown using this structure:
 
-## This Weekend in Berlin ({date_from} to {date_to})
+{header}
 
-**Top picks{' for you' if profile else ''}**
+**{top_picks_label}**
 - One sentence per event: link the event NAME to its url as a markdown link, like
   [Klockworks Night at Tresor](https://ra.co/events/123), then the venue and why
   it stands out (or why it fits the taste profile). Max 4 picks. Be specific, name
   the headliner, note the BPM range or genre, mention the price if it is notable.
   No hype words (avoid "amazing", "epic", "must-see").
 
-**Worth knowing**
-- 2 or 3 other events on the radar even if they do not perfectly match the profile.
-  One sentence each, and link each event name to its url the same way.
+**{extra_section}**
+- 2 or 3 other events worth considering even if they do not perfectly match the
+  profile. One sentence each, link each event name to its url the same way.
 
 **Practical notes**
 - One line on door policy, pricing range across all events, or anything
@@ -180,7 +243,7 @@ def generate_digest(session_id: str) -> str | None:
         session_id: The session to generate for. Use "__global__" for a
                     non-personalised global digest.
     """
-    date_from, date_to = _digest_date_range()
+    date_from, date_to, period_label, digest_type = _digest_window()
     profile = memory.load_profile(session_id) if session_id != _GLOBAL_SESSION else None
 
     logger.info(
@@ -188,6 +251,8 @@ def generate_digest(session_id: str) -> str | None:
         session_id=session_id,
         date_from=date_from,
         date_to=date_to,
+        digest_type=digest_type,
+        period_label=period_label,
         personalised=profile is not None,
     )
 
@@ -197,7 +262,10 @@ def generate_digest(session_id: str) -> str | None:
         logger.warning("digest_find_events_failed", error=str(exc), session_id=session_id)
         events = []
 
-    prompt = _build_digest_prompt(date_from, date_to, events, profile)
+    prompt = _build_digest_prompt(
+        date_from, date_to, events, profile,
+        period_label=period_label, digest_type=digest_type,
+    )
 
     try:
         result = llm_client.chat(
@@ -324,21 +392,25 @@ if __name__ == "__main__":
 
     try:
         print("=" * 60)
-        print("Test 1: _digest_date_range returns valid ISO dates")
+        print("Test 1: _digest_window returns valid ISO dates and context")
         print("=" * 60)
-        d_from, d_to = _digest_date_range()
-        print(f"  date_from : {d_from}")
-        print(f"  date_to   : {d_to}")
+        from datetime import date as _date
+        d_from, d_to, label, dtype = _digest_window()
+        print(f"  date_from    : {d_from}")
+        print(f"  date_to      : {d_to}")
+        print(f"  period_label : {label}")
+        print(f"  digest_type  : {dtype}")
         assert len(d_from) == 10 and d_from[4] == "-", "FAIL: date_from not ISO format"
         assert len(d_to) == 10 and d_to[4] == "-", "FAIL: date_to not ISO format"
-        from datetime import date as _date
         assert _date.fromisoformat(d_to) >= _date.fromisoformat(d_from), (
             "FAIL: date_to must be >= date_from"
         )
+        assert dtype in ("midweek", "preview", "weekend"), f"FAIL: unexpected dtype {dtype!r}"
+        assert label, "FAIL: period_label must not be empty"
         diff = (_date.fromisoformat(d_to) - _date.fromisoformat(d_from)).days
-        assert diff == 4, f"FAIL: expected 4-day window (Fri -> Tue), got {diff}"
-        print(f"  window    : {diff} days (Fri -> Tue)")
-        print("  OK - date range correct")
+        assert 0 <= diff <= 7, f"FAIL: window should be 0-7 days, got {diff}"
+        print(f"  window       : {diff} days")
+        print("  OK - digest window correct for today's weekday")
 
         print()
         print("=" * 60)

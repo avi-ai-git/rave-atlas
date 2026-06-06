@@ -178,6 +178,7 @@ class TestScrapeAll:
         import automation.club_scraper as scraper
 
         monkeypatch.setattr(scraper, "fetch", lambda url: "<p>Klubnacht</p>")
+        monkeypatch.setattr(scraper, "fetch_browser", lambda url: "<p>Klubnacht</p>")
         monkeypatch.setattr(
             scraper, "extract_events",
             lambda name, text, model=None: [
@@ -197,5 +198,6 @@ class TestScrapeAll:
         import automation.club_scraper as scraper
 
         monkeypatch.setattr(scraper, "fetch", lambda url: None)  # all fetches fail
+        monkeypatch.setattr(scraper, "fetch_browser", lambda url: None)
         summary = scraper.scrape_all(dry_run=True, limit=2)
         assert all(v == -1 for v in summary.values())

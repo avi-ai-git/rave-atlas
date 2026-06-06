@@ -20,6 +20,7 @@ dependencies = [
     "openai>=1.50.0",
     "mistralai>=1.0.0",
     "ddgs>=6.0.0",
+    "playwright>=1.40.0",
     "pytest>=8.3.0",
     "pytest-mock>=3.14.0",
     # Streamlit Cloud's system sqlite3 is older than ChromaDB's >=3.35 floor.
