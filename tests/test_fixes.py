@@ -111,32 +111,25 @@ class TestWebSearch:
         assert out["results"] == []
 
     def test_results_normalised_and_capped(self, mocker):
-        class _FakeDDGS:
-            def __enter__(self):
-                return self
-            def __exit__(self, *a):
-                return False
-            def text(self, q, max_results=5):
-                return [
-                    {"title": "Ben Klock news", "href": "https://x.example/1", "body": "A release."},
-                    {"title": "More", "href": "https://x.example/2", "body": "Another."},
-                ]
-        import ddgs
-        mocker.patch.object(ddgs, "DDGS", _FakeDDGS)
+        # Patch both providers so the test is independent of which key is set.
+        fake_brave = [
+            {"title": "Ben Klock news", "url": "https://x.example/1", "description": "A release."},
+            {"title": "More", "url": "https://x.example/2", "description": "Another."},
+        ]
+        mocker.patch(
+            "tools.web._brave",
+            return_value=fake_brave,
+        )
         out = web_mod.web_search("Ben Klock 2024", k=2)
         assert out["grounded"] is True
         assert len(out["results"]) == 2
         assert out["results"][0]["url"] == "https://x.example/1"
         assert out["results"][0]["title"] == "Ben Klock news"
 
-    def test_ddgs_failure_is_gap_honest(self, mocker):
-        class _BoomDDGS:
-            def __enter__(self):
-                raise RuntimeError("network down")
-            def __exit__(self, *a):
-                return False
-        import ddgs
-        mocker.patch.object(ddgs, "DDGS", _BoomDDGS)
+    def test_both_providers_failing_is_gap_honest(self, mocker):
+        # Both Brave and DuckDuckGo fail -> grounded=False.
+        mocker.patch("tools.web._brave", return_value=None)
+        mocker.patch("tools.web._ddgs", return_value=None)
         out = web_mod.web_search("anything", k=3)
         assert out["grounded"] is False
         assert out["results"] == []
@@ -153,8 +146,8 @@ class TestMistralModel:
         assert llm_client._provider_for("mistral-large-latest") == "mistral"
 
     def test_haiku_still_default_and_openrouter(self):
-        assert config.DEFAULT_MODEL == "anthropic/claude-haiku-4.5"
-        assert llm_client._provider_for("anthropic/claude-haiku-4.5") == "openrouter"
+        assert config.DEFAULT_MODEL == "anthropic/claude-haiku-4-5"
+        assert llm_client._provider_for("anthropic/claude-haiku-4-5") == "openrouter"
 
     def test_mistral_has_price_entry(self):
         assert "mistral-large-latest" in config.MODEL_PRICES

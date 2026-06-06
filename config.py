@@ -48,7 +48,7 @@ OLLAMA_BASE_URL: str = os.environ.get("OLLAMA_BASE_URL", "https://ollama.com/v1"
 
 AVAILABLE_MODELS: list[dict[str, str]] = [
     {
-        "id": "anthropic/claude-haiku-4.5",
+        "id": "anthropic/claude-haiku-4-5",
         "name": "Claude Haiku 4.5 (fast, default)",
         "provider": "openrouter",
     },
@@ -68,7 +68,7 @@ AVAILABLE_MODELS: list[dict[str, str]] = [
 # passes OpenRouter's data-policy guardrails on a default account. Override
 # via DEFAULT_MODEL in .env (must be an id present in AVAILABLE_MODELS).
 DEFAULT_MODEL: str = os.environ.get(
-    "DEFAULT_MODEL", "anthropic/claude-haiku-4.5"
+    "DEFAULT_MODEL", "anthropic/claude-haiku-4-5"
 )
 
 # Per-model price table: (prompt $/1k tokens, completion $/1k tokens).
@@ -76,7 +76,7 @@ DEFAULT_MODEL: str = os.environ.get(
 # logic. Open-weights models on Ollama Cloud are billed per-account, not
 # per-token, so they show as 0.0 here and the cost badge reads $0 for them.
 MODEL_PRICES: dict[str, tuple[float, float]] = {
-    "anthropic/claude-haiku-4.5": (0.00025, 0.00125),
+    "anthropic/claude-haiku-4-5": (0.00025, 0.00125),
     "mistral-large-latest": (0.002, 0.006),
     "gpt-oss:120b": (0.0, 0.0),
 }

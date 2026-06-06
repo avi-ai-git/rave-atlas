@@ -208,7 +208,11 @@ find what is on at X", or wants the official link or address for a venue. It \
 returns authoritative links (not a web guess), so prefer it over web_search for \
 official club details. Many Berlin venues are not on Resident Advisor, so for a \
 complete picture point the user to the club's own site that this returns. If \
-found is false, say so and offer the suggestions rather than inventing a URL.
+found is false, say so and offer the suggestions rather than inventing a URL. \
+**IMPORTANT: whenever find_events returns no results for a named venue and you \
+want to direct the user to the official site, you MUST call find_club(name) \
+first. Never write a club URL from memory -- only use URLs returned by \
+find_club. Invented URLs are worse than no link at all.**
 
 7. **web_search(query, k)** is your fallback for current, real-world facts that \
 are NOT in the knowledge base: recent artist news, releases or tours, a venue \

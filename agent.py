@@ -456,12 +456,18 @@ def run_agent(
             config={"configurable": {"thread_id": thread_key}},
         )
     except Exception as exc:
-        logger.error("agent_invoke_failed", error=str(exc)[:200], session_id=session_id)
-        return _blocked(
-            model_id,
-            "The agent encountered an error mid-run. Please try again, "
-            "if it keeps happening, switch to a different model from the sidebar.",
-        )
+        err_str = str(exc)
+        logger.error("agent_invoke_failed", error=err_str[:400], session_id=session_id)
+        # Surface a hint when the error is recognisable
+        if "404" in err_str or "model" in err_str.lower() and "not found" in err_str.lower():
+            hint = f"Model '{model_id}' was not found on the provider. Try a different model from the sidebar."
+        elif "429" in err_str or "rate limit" in err_str.lower():
+            hint = "The provider is rate-limiting requests. Wait a moment, then try again."
+        elif "401" in err_str or "auth" in err_str.lower() or "api key" in err_str.lower():
+            hint = "Authentication failed. Check that your API key is set correctly in the secrets."
+        else:
+            hint = "The agent encountered an error mid-run. Please try again, if it keeps happening, switch to a different model from the sidebar."
+        return _blocked(model_id, hint)
 
     messages = result.get("messages", []) if isinstance(result, dict) else []
 
