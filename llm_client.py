@@ -1,9 +1,10 @@
 """
 Rave Atlas — LLM client.
 
-Wraps two OpenAI-compatible providers behind a single chat() function:
-  - OpenRouter  → Anthropic Claude models (Sonnet, Haiku, Opus)
-  - Ollama Cloud → open-source models (Gemma 3 27B, GPT-OSS 120B)
+Wraps three OpenAI-compatible providers behind a single chat() function:
+  - OpenRouter   Anthropic Claude models (Haiku, and optionally Sonnet/Opus)
+  - Mistral      Mistral Large (also reuses the moderation key)
+  - Ollama Cloud open-source models (Gemma 3 27B, GPT-OSS 120B) when enabled
 
 Provider is selected automatically from config.AVAILABLE_MODELS based on
 the requested model ID — no if/elif sprawl at call sites.
@@ -76,6 +77,11 @@ def _get_client(provider: str) -> openai.OpenAI:
             _clients[provider] = openai.OpenAI(
                 api_key=config.OLLAMA_API_KEY or "ollama",
                 base_url=config.OLLAMA_BASE_URL,
+            )
+        elif provider == "mistral":
+            _clients[provider] = openai.OpenAI(
+                api_key=config.MISTRAL_API_KEY,
+                base_url=config.MISTRAL_BASE_URL,
             )
         else:  # openrouter (default)
             _clients[provider] = openai.OpenAI(
@@ -250,6 +256,14 @@ def get_chat_model(
             model=model_id,
             api_key=config.OLLAMA_API_KEY or "ollama",
             base_url=config.OLLAMA_BASE_URL,
+            temperature=temperature,
+            top_p=top_p,
+        )
+    if provider == "mistral":
+        return ChatOpenAI(
+            model=model_id,
+            api_key=config.MISTRAL_API_KEY,
+            base_url=config.MISTRAL_BASE_URL,
             temperature=temperature,
             top_p=top_p,
         )

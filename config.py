@@ -44,6 +44,11 @@ AVAILABLE_MODELS: list[dict[str, str]] = [
         "name": "Claude Haiku 4.5 (fast)",
         "provider": "openrouter",
     },
+    {
+        "id": "mistral-large-latest",
+        "name": "Mistral Large (alternative)",
+        "provider": "mistral",
+    },
     # -- uncomment to re-enable additional models --
     # {
     #     "id": "anthropic/claude-sonnet-4.6",
@@ -87,6 +92,7 @@ MODEL_PRICES: dict[str, tuple[float, float]] = {
     "anthropic/claude-haiku-4.5":   (0.00025, 0.00125),
     "anthropic/claude-opus-4.7":    (0.015,   0.075),
     "openai/gpt-5.5":               (0.015,   0.060),
+    "mistral-large-latest":         (0.002,   0.006),
     "gemma3:27b":                   (0.0,     0.0),
     "gpt-oss:120b":                 (0.0,     0.0),
 }
@@ -201,34 +207,36 @@ AVAILABLE_CITIES: list[str] = [
 
 CITY_REGIONS: dict[str, list[str]] = {
     "All Europe": [],
-    "Germany & DACH": [
+    "Germany": [
         "Berlin", "Hamburg", "Cologne", "Frankfurt", "Munich", "Leipzig",
         "Düsseldorf", "Stuttgart", "Nuremberg", "Dresden", "Mannheim", "Hannover",
-        "Vienna", "Zurich", "Geneva", "Basel", "Graz",
     ],
-    "Benelux & France": [
+    "Austria & Switzerland": [
+        "Vienna", "Graz", "Zurich", "Geneva", "Basel",
+    ],
+    "Benelux": [
         "Amsterdam", "Rotterdam", "Utrecht", "Eindhoven",
         "Brussels", "Ghent", "Antwerp",
+    ],
+    "France": [
         "Paris", "Lyon", "Marseille", "Bordeaux", "Toulouse",
         "Strasbourg", "Lille", "Nantes",
     ],
-    "Iberia & Italy": [
+    "Southern Europe": [
         "Barcelona", "Madrid", "Valencia", "Ibiza", "Seville",
         "Lisbon", "Porto",
         "Milan", "Rome", "Bologna", "Florence", "Turin", "Naples",
+        "Athens", "Thessaloniki",
     ],
     "Scandinavia": [
         "Copenhagen", "Stockholm", "Gothenburg", "Malmö",
         "Oslo", "Bergen", "Helsinki",
     ],
-    "Eastern Europe": [
+    "Eastern Europe & Turkey": [
         "Warsaw", "Kraków", "Gdańsk", "Prague", "Brno",
         "Budapest", "Bucharest", "Cluj-Napoca",
         "Belgrade", "Zagreb", "Ljubljana",
-        "Vilnius", "Riga", "Tallinn",
-    ],
-    "South-East & Turkey": [
-        "Athens", "Thessaloniki", "Istanbul",
+        "Vilnius", "Riga", "Tallinn", "Istanbul",
     ],
 }
 
@@ -237,6 +245,11 @@ CITY_REGIONS: dict[str, list[str]] = {
 
 DISCOGS_TOKEN: str = os.environ.get("DISCOGS_TOKEN", "")
 MISTRAL_API_KEY: str = os.environ.get("MISTRAL_API_KEY", "")
+# Mistral's OpenAI-compatible endpoint. The same MISTRAL_API_KEY powers both the
+# safety moderation call (safety.py) and Mistral Large as a selectable chat model.
+MISTRAL_BASE_URL: str = os.environ.get(
+    "MISTRAL_BASE_URL", "https://api.mistral.ai/v1"
+)
 
 # ── Telegram weekend digest (optional automation) ─────────────────────────────
 #

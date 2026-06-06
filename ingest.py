@@ -98,9 +98,16 @@ def ingest() -> int:
     collection = get_collection()
     total_chunks = 0
 
-    for md_file in sorted(KB_DIR.glob("*.md")):
+    # rglob so curated root files AND auto-enriched files under knowledge_base/
+    # community/ (written by automation/kb_enrich.py) are both ingested.
+    for md_file in sorted(KB_DIR.rglob("*.md")):
         stem = md_file.stem
-        doc_type, genre = _FILE_META.get(stem, ("general", None))
+        # community/ files are crowd-sourced; tag them so retrieval can tell
+        # them apart from the curated, hand-written canon.
+        if md_file.parent.name == "community":
+            doc_type, genre = "community", None
+        else:
+            doc_type, genre = _FILE_META.get(stem, ("general", None))
 
         text = md_file.read_text(encoding="utf-8")
         chunks = _chunk_text(text)

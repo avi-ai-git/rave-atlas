@@ -19,8 +19,12 @@ dependencies = [
     "apscheduler>=3.10.0",
     "openai>=1.50.0",
     "mistralai>=1.0.0",
+    "ddgs>=6.0.0",
     "pytest>=8.3.0",
     "pytest-mock>=3.14.0",
+    # Streamlit Cloud's system sqlite3 is older than ChromaDB's >=3.35 floor.
+    # Linux-only so local Windows/macOS dev keeps the (already new enough) stdlib.
+    "pysqlite3-binary ; sys_platform == 'linux'",
 ]
 
 [tool.pytest.ini_options]

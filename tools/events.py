@@ -226,37 +226,63 @@ def _get_city_currency(city: str) -> str:
     return _COUNTRY_CURRENCY.get(country, "EUR")
 
 
+# Preferred display symbol per ISO code. Codes not listed fall back to the code.
+_CURRENCY_SYMBOL: dict[str, str] = {
+    "EUR": "€",
+    "DKK": "kr", "SEK": "kr", "NOK": "kr", "ISK": "kr",
+    "CHF": "CHF",
+    "CZK": "Kč", "PLN": "zł", "HUF": "Ft", "RON": "lei",
+    "RSD": "RSD", "TRY": "₺", "BGN": "lv",
+}
+
+# ISO codes whose symbol is written BEFORE the number (e.g. "€13", "₺120").
+# Everything else is written after (e.g. "150 kr", "120 zł").
+_SYMBOL_BEFORE: frozenset[str] = frozenset({"EUR", "TRY"})
+
+
 def _annotate_price(cost_str: str, city: str) -> str:
     """
-    Append a currency code to a bare-number price string when the city uses a
-    non-EUR currency.
+    Return a display price that always carries the city's currency.
 
-    RA returns prices as free-form strings ("150", "€15", "Free", "15-20€").
-    For non-EUR cities the string is just a number with no symbol.  This
-    function detects that case and appends the correct currency code so the UI
-    can display "150 DKK" instead of just "150".
+    RA returns prices as free-form strings ("150", "13/16", "€15", "Free", "").
+    Crucially RA does NOT always include a currency symbol, even for euro cities,
+    so a Paris event can come back as the bare "13/16". This function makes the
+    price unambiguous:
 
-    If the string already contains a currency symbol or code, or is not a bare
-    number, it is returned unchanged.
+      - empty / missing      -> "No price listed"
+      - free / donation      -> "Free"
+      - already has a symbol  -> trusted, returned unchanged
+        or known ISO code
+      - bare number / range  -> prefixed or suffixed with the city's currency
+                                (e.g. Paris "13/16" -> "€13/16",
+                                 Copenhagen "150" -> "150 kr")
     """
-    if not cost_str:
-        return cost_str
-    lower = cost_str.lower().strip()
-    # Already has a symbol or word — leave it alone
-    if any(ch in cost_str for ch in ("€", "$", "£", "kr", "zł", "Ft", "lei")):
-        return cost_str
-    known_codes = set(_COUNTRY_CURRENCY.values())
-    if any(code.lower() in lower for code in known_codes):
-        return cost_str
-    if "free" in lower or "donation" in lower:
-        return cost_str
-
-    # Bare number (possibly with a range like "10-20") — prefix with currency
     currency = _get_city_currency(city)
-    if currency == "EUR":
-        return cost_str  # RA normally includes "€" for EUR; leave as-is
-    # Append code after the number(s)
-    return f"{cost_str.strip()} {currency}"
+    symbol = _CURRENCY_SYMBOL.get(currency, currency)
+
+    if not cost_str or not cost_str.strip():
+        return "No price listed"
+
+    lower = cost_str.lower().strip()
+    if "free" in lower or "donation" in lower:
+        return "Free"
+
+    # Already labelled with a recognised symbol or ISO code: trust RA's string.
+    symbol_chars = ("€", "$", "£", "kr", "zł", "Ft", "lei", "Kč", "lv", "₺", "CHF")
+    if any(s in cost_str for s in symbol_chars):
+        return cost_str.strip()
+    known_codes = set(_COUNTRY_CURRENCY.values()) | {"EUR"}
+    if any(re.search(rf"\b{re.escape(code.lower())}\b", lower) for code in known_codes):
+        return cost_str.strip()
+
+    # Needs at least one digit to be a price; otherwise leave it as written.
+    if not re.search(r"\d", cost_str):
+        return cost_str.strip()
+
+    n = cost_str.strip()
+    if currency in _SYMBOL_BEFORE:
+        return f"{symbol}{n}"      # e.g. "€13/16", "₺120"
+    return f"{n} {symbol}"          # e.g. "150 kr", "120 zł"
 
 
 def _normalize_event(row: dict[str, Any], city: str = "") -> dict[str, Any]:
@@ -327,6 +353,22 @@ def find_events(
     """
     filters = filters or {}
     city = (city or config.HOME_CITY).strip()
+
+    # Date sanity: surface (don't silently honour) an obviously-stale date_from,
+    # e.g. a model that ignored today's date and queried a past/last-year range.
+    try:
+        from datetime import date as _date
+
+        if _date.fromisoformat(date_from[:10]) < _date.today():
+            logger.warning(
+                "find_events_past_date",
+                date_from=date_from,
+                date_to=date_to,
+                today=_date.today().isoformat(),
+                note="queried a date in the past; the model may have mis-resolved a relative date",
+            )
+    except (ValueError, TypeError):
+        logger.warning("find_events_bad_date", date_from=date_from, date_to=date_to)
 
     area_id = resolve_area_id(city)
     if area_id is None:

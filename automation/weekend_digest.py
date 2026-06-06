@@ -133,27 +133,33 @@ You are writing the Friday-morning weekend digest for a Berlin electronic music 
 
 Date window: {date_from} to {date_to}{profile_block}
 
-Berlin events this weekend (JSON):
+Berlin events this weekend (JSON). Each event has a "url" field, its Resident
+Advisor page:
 {events_block}{no_events_note}
 
 Write a digest in clean markdown using this structure:
 
-## This Weekend in Berlin ({date_from} → {date_to})
+## This Weekend in Berlin ({date_from} to {date_to})
 
-**Top picks{' for you' if profile else ''}:**
-- One sentence per event: name, venue, why it stands out (or why it fits the taste profile).
-  Max 4 picks. Be specific — name the headliner, note the BPM range or genre, mention
-  the price if it's notable. No hype words (avoid "amazing", "epic", "must-see").
+**Top picks{' for you' if profile else ''}**
+- One sentence per event: link the event NAME to its url as a markdown link, like
+  [Klockworks Night at Tresor](https://ra.co/events/123), then the venue and why
+  it stands out (or why it fits the taste profile). Max 4 picks. Be specific, name
+  the headliner, note the BPM range or genre, mention the price if it is notable.
+  No hype words (avoid "amazing", "epic", "must-see").
 
-**Worth knowing:**
-- 2-3 other events that are on the radar even if they don't perfectly match the profile.
-  One sentence each.
+**Worth knowing**
+- 2 or 3 other events on the radar even if they do not perfectly match the profile.
+  One sentence each, and link each event name to its url the same way.
 
-**Practical notes:**
-- One line on door policy, pricing range across all events, or anything operationally useful
-  (e.g. "most venues start late — doors 23:00 or later").
+**Practical notes**
+- One line on door policy, pricing range across all events, or anything
+  operationally useful (e.g. "most venues start late, doors 23:00 or later").
 
-Keep the whole digest under 350 words. Lead with the best pick, not a preamble.
+Rules: every event you name MUST be a markdown link to its url. Never write an
+event name without its link. Do not use em dashes or en dashes; use commas or
+full stops. Keep the whole digest under 350 words. Lead with the best pick, not
+a preamble.
 """
 
 
