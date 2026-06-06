@@ -1,5 +1,5 @@
 """
-Rave Atlas — central configuration.
+Rave Atlas, central configuration.
 
 All settings are loaded from environment variables (python-dotenv).
 No hard-coded API keys, model names, or base URLs exist anywhere in this codebase.
@@ -32,80 +32,64 @@ OLLAMA_BASE_URL: str = os.environ.get("OLLAMA_BASE_URL", "https://ollama.com/v1"
 
 # ── Curated model list ────────────────────────────────────────────────────────
 #
-# Haiku 4.5 is the active model — fastest, cheapest, works out-of-the-box on
-# default OpenRouter accounts without privacy-policy configuration.
+# Three models, one per provider, chosen to demonstrate the multi-provider
+# router (llm_client.py) without bloating the picker:
 #
-# To re-enable additional models, uncomment the entries below and restart.
-# Multi-model support is architecturally in place (see llm_client.py).
+#   - Claude Haiku 4.5 (OpenRouter): the default. Fastest and cheapest tier,
+#     and the one model that works on a default OpenRouter account without any
+#     privacy-policy configuration, so a fresh clone runs out of the box.
+#   - Mistral Large (Mistral): a capable non-Anthropic alternative. It reuses
+#     the same MISTRAL_API_KEY that powers the safety moderation call, so
+#     enabling it costs no extra credential.
+#   - GPT-OSS 120B (Ollama Cloud): an open-weights model, proof the same
+#     OpenAI-compatible client routes to a third provider unchanged. Needs
+#     OLLAMA_API_KEY; absent that, the picker entry simply fails on selection
+#     and the user falls back to Haiku.
 
 AVAILABLE_MODELS: list[dict[str, str]] = [
     {
         "id": "anthropic/claude-haiku-4.5",
-        "name": "Claude Haiku 4.5 (fast)",
+        "name": "Claude Haiku 4.5 (fast, default)",
         "provider": "openrouter",
     },
     {
         "id": "mistral-large-latest",
-        "name": "Mistral Large (alternative)",
+        "name": "Mistral Large",
         "provider": "mistral",
     },
-    # -- uncomment to re-enable additional models --
-    # {
-    #     "id": "anthropic/claude-sonnet-4.6",
-    #     "name": "Claude Sonnet 4.6",
-    #     "provider": "openrouter",
-    # },
-    # {
-    #     "id": "anthropic/claude-opus-4.7",
-    #     "name": "Claude Opus 4.7 (quality)",
-    #     "provider": "openrouter",
-    # },
-    # {
-    #     "id": "openai/gpt-5.5",
-    #     "name": "GPT-5.5 (OpenAI via OpenRouter)",
-    #     "provider": "openrouter",
-    # },
-    # {
-    #     "id": "gemma3:27b",
-    #     "name": "Gemma 3 27B (open-source)",
-    #     "provider": "ollama",
-    # },
-    # {
-    #     "id": "gpt-oss:120b",
-    #     "name": "GPT-OSS 120B (open-source)",
-    #     "provider": "ollama",
-    # },
+    {
+        "id": "gpt-oss:120b",
+        "name": "GPT-OSS 120B (open source)",
+        "provider": "ollama",
+    },
 ]
 
 # Default to Haiku 4.5: cheapest tier, fastest, and the model that reliably
-# passes OpenRouter's data-policy guardrails on a default account. Sonnet
-# and Opus stay in AVAILABLE_MODELS as picker options; users with a
-# whitelisted OpenRouter privacy policy can override via DEFAULT_MODEL in .env.
+# passes OpenRouter's data-policy guardrails on a default account. Override
+# via DEFAULT_MODEL in .env (must be an id present in AVAILABLE_MODELS).
 DEFAULT_MODEL: str = os.environ.get(
     "DEFAULT_MODEL", "anthropic/claude-haiku-4.5"
 )
 
 # Per-model price table: (prompt $/1k tokens, completion $/1k tokens).
-# Kept here so llm_client.py can estimate cost without hard-coding prices in logic.
+# Kept here so llm_client.py can estimate cost without hard-coding prices in
+# logic. Open-weights models on Ollama Cloud are billed per-account, not
+# per-token, so they show as 0.0 here and the cost badge reads $0 for them.
 MODEL_PRICES: dict[str, tuple[float, float]] = {
-    "anthropic/claude-sonnet-4.6":  (0.003,   0.015),
-    "anthropic/claude-haiku-4.5":   (0.00025, 0.00125),
-    "anthropic/claude-opus-4.7":    (0.015,   0.075),
-    "openai/gpt-5.5":               (0.015,   0.060),
-    "mistral-large-latest":         (0.002,   0.006),
-    "gemma3:27b":                   (0.0,     0.0),
-    "gpt-oss:120b":                 (0.0,     0.0),
+    "anthropic/claude-haiku-4.5": (0.00025, 0.00125),
+    "mistral-large-latest": (0.002, 0.006),
+    "gpt-oss:120b": (0.0, 0.0),
 }
 
 # ── Cities ────────────────────────────────────────────────────────────────────
 #
-# Berlin is the app's *home* city — the knowledge base, persona, venue
+# Berlin is the app's *home* city, the knowledge base, persona, venue
 # commentary, and scene history are all Berlin-grade. The events tool, however,
 # is genuinely city-aware: find_events resolves any of these names to a
 # Resident Advisor area ID live (see tools/events.py).
 #
 # This curated list is limited to cities RA actually covers well. Small towns
-# (e.g. Aachen, Bonn) are deliberately excluded — RA's listings there are
+# (e.g. Aachen, Bonn) are deliberately excluded, RA's listings there are
 # near-empty, and the honest move is not to offer a city we can't deliver.
 # Cologne/Düsseldorf are the realistic picks for the western-Germany scene.
 
@@ -113,15 +97,18 @@ HOME_CITY: str = os.environ.get("HOME_CITY", "Berlin")
 
 # European cities with meaningful Resident Advisor coverage (~100 cities).
 # RA density is highest in Berlin, Amsterdam, London, Paris, Barcelona, Belgrade,
-# and the major German cities. Smaller towns are excluded — RA's listings there
+# and the major German cities. Smaller towns are excluded, RA's listings there
 # are near-empty and the honest move is not to offer cities we can't deliver on.
 # Coverage is checked live: tools/events.py resolve_area_id() returns None for
 # unknown cities and the Explore tab shows an honest "no listings" message.
 AVAILABLE_CITIES: list[str] = [
     # ── Germany ──────────────────────────────────────────────────────────────
-    "Berlin",       # home city — full KB depth
-    "Hamburg",
+    # Berlin sits at the end of its group on purpose: this is the "Beyond Berlin"
+    # browse, and the Raves in Berlin agent tab is the better tool for Berlin.
+    # Berlin stays in the list (a plain RA browse of it is still useful) but does
+    # not lead the city picker.
     "Cologne",
+    "Hamburg",
     "Frankfurt",
     "Munich",
     "Leipzig",
@@ -131,6 +118,7 @@ AVAILABLE_CITIES: list[str] = [
     "Dresden",
     "Mannheim",
     "Hannover",
+    "Berlin", # home city, full KB depth; better served by the Raves in Berlin tab
     # ── United Kingdom & Ireland ──────────────────────────────────────────────
     "London",
     "Manchester",
@@ -239,15 +227,15 @@ AVAILABLE_CITIES: list[str] = [
 # ── City regions for the Explore tab filter ──────────────────────────────────
 #
 # Keys become option labels in the region selector.
-# Empty list for "All Europe" is a sentinel — the tab shows all cities.
+# Empty list for "All Europe" is a sentinel, the tab shows all cities.
 # Berlin is included (distinct from the Berlin agent: this is a plain RA browse).
 # ~100 cities total across 14 regions.
 
 CITY_REGIONS: dict[str, list[str]] = {
     "All Europe": [],
     "Germany": [
-        "Berlin", "Hamburg", "Cologne", "Frankfurt", "Munich", "Leipzig",
-        "Düsseldorf", "Stuttgart", "Nuremberg", "Dresden", "Mannheim", "Hannover",
+        "Cologne", "Hamburg", "Frankfurt", "Munich", "Leipzig", "Düsseldorf",
+        "Stuttgart", "Nuremberg", "Dresden", "Mannheim", "Hannover", "Berlin",
     ],
     "United Kingdom & Ireland": [
         "London", "Manchester", "Bristol", "Edinburgh", "Glasgow",
@@ -312,7 +300,7 @@ MISTRAL_BASE_URL: str = os.environ.get(
 # ── Telegram weekend digest (optional automation) ─────────────────────────────
 #
 # The Friday weekend digest is sent to Telegram by a standalone script
-# (automation/weekend_telegram.py) run from a GitHub Actions cron — NOT from the
+# (automation/weekend_telegram.py) run from a GitHub Actions cron, NOT from the
 # Streamlit process, which can't be relied on to be awake on a schedule. Both
 # values are optional: if either is missing, the sender logs and no-ops cleanly.
 
@@ -322,7 +310,7 @@ TELEGRAM_CHAT_ID: str = os.environ.get("TELEGRAM_CHAT_ID", "")
 # ── Observability: LangSmith ──────────────────────────────────────────────────
 
 LANGSMITH_API_KEY: str = os.environ.get("LANGSMITH_API_KEY", "")
-LANGSMITH_PROJECT: str = os.environ.get("LANGSMITH_PROJECT", "rave-atlas")
+LANGSMITH_PROJECT: str = os.environ.get("LANGSMITH_PROJECT", "berlin rave atlas")
 LANGCHAIN_TRACING_V2: bool = (
     os.environ.get("LANGCHAIN_TRACING_V2", "false").lower() == "true"
 )
@@ -350,24 +338,27 @@ MODERATION_THRESHOLD: float = float(
 
 
 if __name__ == "__main__":
-    print(f"DEFAULT_MODEL     : {DEFAULT_MODEL}")
+    print(f"DEFAULT_MODEL : {DEFAULT_MODEL}")
     print(f"OPENROUTER_BASE_URL: {OPENROUTER_BASE_URL}")
-    print(f"OLLAMA_BASE_URL   : {OLLAMA_BASE_URL}")
+    print(f"OLLAMA_BASE_URL : {OLLAMA_BASE_URL}")
     print()
     print("AVAILABLE_MODELS:")
     for m in AVAILABLE_MODELS:
-        print(f"  [{m['provider']:12s}]  {m['id']}  -  {m['name']}")
+        print(f" [{m['provider']:12s}] {m['id']} - {m['name']}")
     print()
 
     assert OPENROUTER_BASE_URL, "OPENROUTER_BASE_URL must not be empty"
-    assert DISCOGS_TOKEN, "DISCOGS_TOKEN is missing — add it to .env"
-    assert MISTRAL_API_KEY, "MISTRAL_API_KEY is missing — add it to .env"
+    assert DISCOGS_TOKEN, "DISCOGS_TOKEN is missing, add it to .env"
+    assert MISTRAL_API_KEY, "MISTRAL_API_KEY is missing, add it to .env"
     assert len(AVAILABLE_MODELS) > 0, "AVAILABLE_MODELS must not be empty"
     assert any(
         m["provider"] == "openrouter" for m in AVAILABLE_MODELS
     ), "At least one OpenRouter model required"
-    # Ollama models are commented out by default — remove this assertion when
-    # re-enabling open-source models:
-    # assert any(m["provider"] == "ollama" for m in AVAILABLE_MODELS)
+    assert DEFAULT_MODEL in {m["id"] for m in AVAILABLE_MODELS}, (
+        f"DEFAULT_MODEL {DEFAULT_MODEL!r} must be one of AVAILABLE_MODELS"
+    )
+    assert all(
+        m["id"] in MODEL_PRICES for m in AVAILABLE_MODELS
+    ), "Every model in AVAILABLE_MODELS needs a MODEL_PRICES entry"
 
     print("All config assertions passed.")

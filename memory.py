@@ -1,5 +1,5 @@
 """
-Rave Atlas — persistent memory.
+Rave Atlas, persistent memory.
 
 Two distinct concerns live here:
 
@@ -17,18 +17,19 @@ Two distinct concerns live here:
 Both use the same SQLite file (SQLITE_PATH from config). SqliteSaver
 manages its own checkpoint tables; we manage taste_profiles and digests.
 
-Public interface consumed by agent.py (Phase 10) and app.py (Phase 12):
-    get_checkpointer()                    → SqliteSaver (singleton)
-    load_profile(session_id)              → dict | None
-    save_profile(session_id, profile)     → None
-    update_profile_from_feedback(...)     → dict  (updated profile)
-    save_digest(session_id, text)         → None
-    load_digest(session_id)               → str | None
+Public interface consumed by agent.py and app.py:
+    get_checkpointer() → SqliteSaver (singleton)
+    load_profile(session_id) → dict | None
+    save_profile(session_id, profile) → None
+    update_profile_from_feedback(...) → dict (updated profile)
+    save_digest(session_id, text) → None
+    load_digest(session_id) → str | None
 """
 
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from typing import Any
 
@@ -63,9 +64,16 @@ def _open_db() -> sqlite3.Connection:
     Ensures the taste_profiles and digests tables exist.
     Called per-operation; caller is responsible for closing.
     """
-    conn = sqlite3.connect(config.SQLITE_PATH, check_same_thread=False)
+    db_path = config.SQLITE_PATH
+    parent = os.path.dirname(db_path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.OperationalError:
+        pass  # WAL unsupported on some cloud/network filesystems; continue without it
     _ensure_tables(conn)
     return conn
 
@@ -73,21 +81,21 @@ def _open_db() -> sqlite3.Connection:
 def _ensure_tables(conn: sqlite3.Connection) -> None:
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS taste_profiles (
-            session_id       TEXT  PRIMARY KEY,
-            preferred_genres TEXT  NOT NULL DEFAULT '[]',
-            blocked_genres   TEXT  NOT NULL DEFAULT '[]',
-            loved_artists    TEXT  NOT NULL DEFAULT '[]',
-            blocked_artists  TEXT  NOT NULL DEFAULT '[]',
-            budget_ceiling   REAL,
-            preferred_areas  TEXT  NOT NULL DEFAULT '[]',
-            updated_at       TEXT  NOT NULL DEFAULT (datetime('now'))
+            session_id TEXT PRIMARY KEY,
+            preferred_genres TEXT NOT NULL DEFAULT '[]',
+            blocked_genres TEXT NOT NULL DEFAULT '[]',
+            loved_artists TEXT NOT NULL DEFAULT '[]',
+            blocked_artists TEXT NOT NULL DEFAULT '[]',
+            budget_ceiling REAL,
+            preferred_areas TEXT NOT NULL DEFAULT '[]',
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
 
         CREATE TABLE IF NOT EXISTS digests (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id  TEXT    NOT NULL,
-            digest_text TEXT    NOT NULL,
-            created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            digest_text TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
 
         CREATE INDEX IF NOT EXISTS idx_digests_session
@@ -99,11 +107,11 @@ def _ensure_tables(conn: sqlite3.Connection) -> None:
 def _row_to_profile(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "preferred_genres": json.loads(row["preferred_genres"]),
-        "blocked_genres":   json.loads(row["blocked_genres"]),
-        "loved_artists":    json.loads(row["loved_artists"]),
-        "blocked_artists":  json.loads(row["blocked_artists"]),
-        "budget_ceiling":   row["budget_ceiling"],
-        "preferred_areas":  json.loads(row["preferred_areas"]),
+        "blocked_genres": json.loads(row["blocked_genres"]),
+        "loved_artists": json.loads(row["loved_artists"]),
+        "blocked_artists": json.loads(row["blocked_artists"]),
+        "budget_ceiling": row["budget_ceiling"],
+        "preferred_areas": json.loads(row["preferred_areas"]),
     }
 
 
@@ -122,8 +130,12 @@ def get_checkpointer() -> SqliteSaver:
     """
     global _checkpointer, _checkpointer_conn
     if _checkpointer is None:
+        db_path = config.SQLITE_PATH
+        parent = os.path.dirname(db_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         _checkpointer_conn = sqlite3.connect(
-            config.SQLITE_PATH, check_same_thread=False
+            db_path, check_same_thread=False
         )
         _checkpointer = SqliteSaver(_checkpointer_conn)
         _checkpointer.setup()
@@ -166,7 +178,7 @@ def save_profile(session_id: str, profile: dict[str, Any]) -> None:
     """
     conn = _open_db()
     try:
-        with conn:  # auto-commit / rollback transaction
+        with conn: # auto-commit / rollback transaction
             conn.execute(
                 """
                 INSERT INTO taste_profiles (
@@ -177,12 +189,12 @@ def save_profile(session_id: str, profile: dict[str, Any]) -> None:
                 VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 ON CONFLICT (session_id) DO UPDATE SET
                     preferred_genres = excluded.preferred_genres,
-                    blocked_genres   = excluded.blocked_genres,
-                    loved_artists    = excluded.loved_artists,
-                    blocked_artists  = excluded.blocked_artists,
-                    budget_ceiling   = excluded.budget_ceiling,
-                    preferred_areas  = excluded.preferred_areas,
-                    updated_at       = datetime('now')
+                    blocked_genres = excluded.blocked_genres,
+                    loved_artists = excluded.loved_artists,
+                    blocked_artists = excluded.blocked_artists,
+                    budget_ceiling = excluded.budget_ceiling,
+                    preferred_areas = excluded.preferred_areas,
+                    updated_at = datetime('now')
                 """,
                 (
                     session_id,
@@ -211,9 +223,9 @@ def update_profile_from_feedback(
     Returns the full updated profile after saving.
 
     Logic:
-      liked=True  — add event's genres to preferred, artists to loved.
+      liked=True, add event's genres to preferred, artists to loved.
                     Remove them from blocked lists if they ended up there.
-      liked=False — add genres to blocked (unless already preferred),
+      liked=False, add genres to blocked (unless already preferred),
                     add artists to blocked (unless already loved).
 
     Budget ceiling is not updated from event feedback; it is set explicitly
@@ -322,7 +334,7 @@ if __name__ == "__main__":
         print("=" * 60)
         result = load_profile(SESSION)
         assert result is None, f"FAIL: expected None, got {result}"
-        print("  OK — None returned for new session")
+        print(" OK, None returned for new session")
 
         print()
         print("=" * 60)
@@ -345,14 +357,14 @@ if __name__ == "__main__":
             f"FAIL: budget_ceiling mismatch: {profile_out['budget_ceiling']}"
         assert profile_out["preferred_areas"] == ["Friedrichshain"], \
             f"FAIL: preferred_areas mismatch: {profile_out['preferred_areas']}"
-        print(f"  preferred_genres : {profile_out['preferred_genres']}")
-        print(f"  loved_artists    : {profile_out['loved_artists']}")
-        print(f"  budget_ceiling   : {profile_out['budget_ceiling']}")
-        print("  Round-trip OK")
+        print(f" preferred_genres : {profile_out['preferred_genres']}")
+        print(f" loved_artists : {profile_out['loved_artists']}")
+        print(f" budget_ceiling : {profile_out['budget_ceiling']}")
+        print(" Round-trip OK")
 
         print()
         print("=" * 60)
-        print("Test 3: update_profile_from_feedback — liked=True")
+        print("Test 3: update_profile_from_feedback, liked=True")
         print("=" * 60)
         fake_event = {
             "genres": ["Techno", "Electro"],
@@ -363,13 +375,13 @@ if __name__ == "__main__":
             "FAIL: new genre from liked event should be added to preferred"
         assert "DVS1" in updated["loved_artists"], \
             "FAIL: artist from liked event should be added to loved_artists"
-        print(f"  preferred_genres : {updated['preferred_genres']}")
-        print(f"  loved_artists    : {updated['loved_artists']}")
-        print("  liked=True update OK")
+        print(f" preferred_genres : {updated['preferred_genres']}")
+        print(f" loved_artists : {updated['loved_artists']}")
+        print(" liked=True update OK")
 
         print()
         print("=" * 60)
-        print("Test 4: update_profile_from_feedback — liked=False")
+        print("Test 4: update_profile_from_feedback, liked=False")
         print("=" * 60)
         disliked_event = {
             "genres": ["House"],
@@ -388,9 +400,9 @@ if __name__ == "__main__":
         )
         assert "Techno" not in dislike_techno["blocked_genres"], \
             "FAIL: preferred genre should never be added to blocked_genres"
-        print(f"  blocked_genres  : {updated2['blocked_genres']}")
-        print(f"  blocked_artists : {updated2['blocked_artists']}")
-        print("  liked=False update OK, preferred genre protection OK")
+        print(f" blocked_genres : {updated2['blocked_genres']}")
+        print(f" blocked_artists : {updated2['blocked_artists']}")
+        print(" liked=False update OK, preferred genre protection OK")
 
         print()
         print("=" * 60)
@@ -401,31 +413,31 @@ if __name__ == "__main__":
         digest = load_digest(SESSION)
         assert digest == "This weekend: Berghain with Klock, Tresor with Dettmann.", \
             f"FAIL: digest mismatch: {digest!r}"
-        print(f"  digest : {digest}")
-        print("  Digest round-trip OK")
+        print(f" digest : {digest}")
+        print(" Digest round-trip OK")
 
         print()
         print("=" * 60)
-        print("Test 6: get_checkpointer — returns SqliteSaver")
+        print("Test 6: get_checkpointer, returns SqliteSaver")
         print("=" * 60)
         cp = get_checkpointer()
         assert isinstance(cp, SqliteSaver), \
             f"FAIL: expected SqliteSaver, got {type(cp)}"
         cp2 = get_checkpointer()
         assert cp is cp2, "FAIL: get_checkpointer must return the same singleton"
-        print(f"  checkpointer type : {type(cp).__name__}")
-        print("  Singleton OK")
+        print(f" checkpointer type : {type(cp).__name__}")
+        print(" Singleton OK")
 
     finally:
         config.SQLITE_PATH = _orig_path
         # Close the singleton checkpointer connection before deleting the
-        # temp file — Windows locks open file handles.
+        # temp file, Windows locks open file handles.
         if _checkpointer_conn is not None:
             _checkpointer_conn.close()
         try:
             os.unlink(tmp.name)
         except OSError:
-            pass  # WAL side-files may linger briefly on Windows — not a bug
+            pass # WAL side-files may linger briefly on Windows, not a bug
 
     print()
     print("All assertions passed.")

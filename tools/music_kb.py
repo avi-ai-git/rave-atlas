@@ -1,5 +1,5 @@
 """
-Rave Atlas — explain_music RAG tool.
+Rave Atlas, explain_music RAG tool.
 
 Retrieves grounded context from the curated electronic music knowledge base
 and returns it for the agent to synthesise into a natural-language answer.
@@ -15,8 +15,8 @@ from logging_config import get_logger
 logger = get_logger(__name__)
 
 # Cosine distance above which we consider the query out-of-scope for the KB.
-# Phase-1 test showed on-topic queries return best distance 0.33–0.47;
-# off-topic queries (e.g. geography, general knowledge) land >0.70.
+# Calibrated against the corpus: on-topic queries return a best distance of
+# 0.33 to 0.47; off-topic queries (geography, general knowledge) land above 0.70.
 SIMILARITY_THRESHOLD: float = 0.65
 
 
@@ -38,24 +38,24 @@ def explain_music(
     - Iconic hardware: Roland TR-909, TB-303, and their role in electronic music
 
     DO NOT call this tool for:
-    - Live or upcoming Berlin events  →  use find_events instead
-    - Set-list or track recommendations  →  use build_setlist instead
-    - Real-time artist releases or tour dates  →  use enrich_artist instead
+    - Live or upcoming Berlin events → use find_events instead
+    - Set-list or track recommendations → use build_setlist instead
+    - Real-time artist releases or tour dates → use enrich_artist instead
 
     Args:
         query: The user's question in natural language.
         allowed_doc_types: Allowlist of doc_type values to restrict retrieval
             scope. Valid values: "genre", "history", "labels", "theory",
-            "culture", "etiquette", "venue", "harm_reduction", "city_primer".
-            If None the entire KB is searched. Prefer narrowing when the
-            question is clearly within one category.
+            "music_theory", "culture", "etiquette", "venue", "harm_reduction",
+            "general_education". If None the entire KB is searched. Prefer
+            narrowing when the question is clearly within one category.
         k: Number of chunks to retrieve (default 4).
 
     Returns:
         {
-            "context":  str  — joined text of retrieved chunks, or a gap message,
-            "sources":  list[str]  — filenames that contributed chunks,
-            "grounded": bool  — False means the answer is not in the KB;
+            "context": str, joined text of retrieved chunks, or a gap message,
+            "sources": list[str], filenames that contributed chunks,
+            "grounded": bool, False means the answer is not in the KB;
                                the agent must not invent an answer in this case.
         }
     """
@@ -86,7 +86,7 @@ def explain_music(
     except Exception as exc:
         logger.error("chroma_query_failed", query=query[:80], error=str(exc))
         return {
-            "context": "Knowledge base query failed — please rephrase your question.",
+            "context": "Knowledge base query failed, please rephrase your question.",
             "sources": [],
             "grounded": False,
         }
@@ -122,7 +122,7 @@ def explain_music(
             "context": (
                 "This question is outside the Rave Atlas music knowledge base. "
                 "I can answer questions about electronic music genres, Berlin scene "
-                "history, record labels, and track structure — but not this topic."
+                "history, record labels, and track structure, but not this topic."
             ),
             "sources": [],
             "grounded": False,
@@ -142,34 +142,34 @@ def explain_music(
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("Test 1: on-topic query — techno track structure")
+    print("Test 1: on-topic query, techno track structure")
     print("=" * 60)
     r1 = explain_music("how is a techno track structured")
-    print(f"  grounded : {r1['grounded']}")
-    print(f"  sources  : {r1['sources']}")
-    print(f"  context  : {r1['context'][:300]}…\n")
+    print(f" grounded : {r1['grounded']}")
+    print(f" sources : {r1['sources']}")
+    print(f" context : {r1['context'][:300]}...\n")
     assert r1["grounded"] is True, "FAIL: expected grounded=True for on-topic query"
     assert len(r1["sources"]) > 0, "FAIL: expected at least one source"
     assert len(r1["context"]) > 50, "FAIL: context should not be empty"
 
     print("=" * 60)
-    print("Test 2: off-topic query — geography question")
+    print("Test 2: off-topic query, geography question")
     print("=" * 60)
     r2 = explain_music("what is the capital of France")
-    print(f"  grounded : {r2['grounded']}")
-    print(f"  context  : {r2['context']}\n")
+    print(f" grounded : {r2['grounded']}")
+    print(f" context : {r2['context']}\n")
     assert r2["grounded"] is False, "FAIL: expected grounded=False for off-topic query"
     assert r2["sources"] == [], "FAIL: expected empty sources for ungrounded result"
 
     print("=" * 60)
-    print("Test 3: allowlist filter — genre only")
+    print("Test 3: allowlist filter, genre only")
     print("=" * 60)
     r3 = explain_music(
         "what defines the Berlin techno sound",
         allowed_doc_types=["genre"],
     )
-    print(f"  grounded : {r3['grounded']}")
-    print(f"  sources  : {r3['sources']}")
+    print(f" grounded : {r3['grounded']}")
+    print(f" sources : {r3['sources']}")
     if r3["grounded"]:
         for src in r3["sources"]:
             assert src.startswith("genres_"), (
