@@ -111,23 +111,22 @@ class TestWebSearch:
         assert out["results"] == []
 
     def test_results_normalised_and_capped(self, mocker):
-        # Patch both providers so the test is independent of which key is set.
-        fake_brave = [
-            {"title": "Ben Klock news", "url": "https://x.example/1", "description": "A release."},
-            {"title": "More", "url": "https://x.example/2", "description": "Another."},
+        # Patch all providers so the test is independent of which keys are set.
+        fake = [
+            {"title": "Ben Klock news", "url": "https://x.example/1", "snippet": "A release."},
+            {"title": "More", "url": "https://x.example/2", "snippet": "Another."},
         ]
-        mocker.patch(
-            "tools.web._brave",
-            return_value=fake_brave,
-        )
+        mocker.patch("tools.web._serper", return_value=fake)
+        mocker.patch("tools.web._brave", return_value=fake)
         out = web_mod.web_search("Ben Klock 2024", k=2)
         assert out["grounded"] is True
         assert len(out["results"]) == 2
         assert out["results"][0]["url"] == "https://x.example/1"
         assert out["results"][0]["title"] == "Ben Klock news"
 
-    def test_both_providers_failing_is_gap_honest(self, mocker):
-        # Both Brave and DuckDuckGo fail -> grounded=False.
+    def test_all_providers_failing_is_gap_honest(self, mocker):
+        # All providers fail -> grounded=False.
+        mocker.patch("tools.web._serper", return_value=None)
         mocker.patch("tools.web._brave", return_value=None)
         mocker.patch("tools.web._ddgs", return_value=None)
         out = web_mod.web_search("anything", k=3)

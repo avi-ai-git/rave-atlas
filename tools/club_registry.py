@@ -91,7 +91,7 @@ CLUBS: list[ClubEntry] = [
     ),
     ClubEntry(
         "Kater Blau", "Holzmarktstr. 25, 10243 Berlin",
-        "https://katerblau.de", "https://www.katerclub.de",
+        "https://www.katerclub.de", "https://www.katerclub.de",
         "https://www.berlin.de/en/clubs/8871624-4469452-kater-blau.en.html",
         None, "http",
         "Bar25 lineage on the Spree; house, techno, confetti; FOREVER 25, Katergarten.",

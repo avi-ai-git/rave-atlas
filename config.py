@@ -291,9 +291,12 @@ CITY_REGIONS: dict[str, list[str]] = {
 
 DISCOGS_TOKEN: str = os.environ.get("DISCOGS_TOKEN", "")
 MISTRAL_API_KEY: str = os.environ.get("MISTRAL_API_KEY", "")
-# Optional. When set, web_search uses Brave Search (SLA, 2 k free/month) instead
-# of the keyless DuckDuckGo fallback. Get a key at search.brave.com/api.
+# Optional. When set, web_search uses Brave Search as a fallback provider.
+# Get a key at search.brave.com/api (2 k free queries/month).
 BRAVE_SEARCH_API_KEY: str = os.environ.get("BRAVE_SEARCH_API_KEY", "")
+# Optional. When set, web_search uses Serper (Google-backed) as the primary
+# provider. Stronger than Brave and DuckDuckGo. Get a key at serper.dev.
+SERPER_API_KEY: str = os.environ.get("SERPER_API_KEY", "")
 # Optional. When set, the set builder fetches a real YouTube video ID per track
 # so previews are embedded inline instead of opening a search results page.
 # Get a key at console.cloud.google.com -> YouTube Data API v3 (free: 10k units/day;
