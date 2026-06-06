@@ -297,7 +297,7 @@ def run_agent(
     message: str,
     session_id: str,
     model_id: str | None = None,
-    tone: str = "friendly",
+    tone: str = "concise",
     temperature: float = 0.7,
     top_p: float = 1.0,
     thread_key: str | None = None,

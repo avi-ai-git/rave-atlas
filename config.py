@@ -193,6 +193,46 @@ AVAILABLE_CITIES: list[str] = [
     "Istanbul",
 ]
 
+# ── City regions for the Explore tab filter ──────────────────────────────────
+#
+# Keys become option labels in the region selector.
+# Empty list for "All Europe" is a sentinel — the tab shows all cities.
+# Berlin is included (distinct from the Berlin agent: this is a plain RA browse).
+
+CITY_REGIONS: dict[str, list[str]] = {
+    "All Europe": [],
+    "Germany & DACH": [
+        "Berlin", "Hamburg", "Cologne", "Frankfurt", "Munich", "Leipzig",
+        "Düsseldorf", "Stuttgart", "Nuremberg", "Dresden", "Mannheim", "Hannover",
+        "Vienna", "Zurich", "Geneva", "Basel", "Graz",
+    ],
+    "Benelux & France": [
+        "Amsterdam", "Rotterdam", "Utrecht", "Eindhoven",
+        "Brussels", "Ghent", "Antwerp",
+        "Paris", "Lyon", "Marseille", "Bordeaux", "Toulouse",
+        "Strasbourg", "Lille", "Nantes",
+    ],
+    "Iberia & Italy": [
+        "Barcelona", "Madrid", "Valencia", "Ibiza", "Seville",
+        "Lisbon", "Porto",
+        "Milan", "Rome", "Bologna", "Florence", "Turin", "Naples",
+    ],
+    "Scandinavia": [
+        "Copenhagen", "Stockholm", "Gothenburg", "Malmö",
+        "Oslo", "Bergen", "Helsinki",
+    ],
+    "Eastern Europe": [
+        "Warsaw", "Kraków", "Gdańsk", "Prague", "Brno",
+        "Budapest", "Bucharest", "Cluj-Napoca",
+        "Belgrade", "Zagreb", "Ljubljana",
+        "Vilnius", "Riga", "Tallinn",
+    ],
+    "South-East & Turkey": [
+        "Athens", "Thessaloniki", "Istanbul",
+    ],
+}
+
+
 # ── External APIs ─────────────────────────────────────────────────────────────
 
 DISCOGS_TOKEN: str = os.environ.get("DISCOGS_TOKEN", "")

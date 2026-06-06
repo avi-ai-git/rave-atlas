@@ -3,10 +3,10 @@ Rave Atlas — Streamlit UI.
 
 Four tabs, a Berlin-first agent, and one deliberate non-agent browser:
 
-  🗓 Raves in Berlin  — Berlin event discovery, compare, ratings (ReAct agent)
-  📖 Rave Wiki        — music education chat, grounded in the KB (ReAct agent, RAG)
-  🎛 Set Builder      — 1-hour set builder (direct, deterministic tool call)
-  🌍 Explore Europe   — browse other European Resident Advisor cities (plain API browse)
+  🗓 Raves in Berlin       — Berlin event discovery, compare, ratings (ReAct agent)
+  🎛 Set Builder           — 1-hour set builder (direct, deterministic tool call)
+  📖 Rave Wiki             — KB chat + Berlin weekend digest (ReAct agent, RAG)
+  🌍 Rave Parties in Europe — browse all European Resident Advisor cities (plain API browse)
 
 Why the split: the agent earns its cost where runtime reasoning matters
 (planning a Berlin night across several tools). Mix Builder is a single focused
@@ -535,33 +535,31 @@ def _render_digest_section() -> None:
 
 def _tab_weekend(settings: dict) -> None:
     st.markdown(
-        "**Your Berlin event agent.** Ask what's on any weekend, compare venues, "
-        "or describe your taste and get ranked picks. Every event name is a direct "
-        "link to its Resident Advisor page. Rate picks 👍/👎 to teach the agent your taste."
-    )
-    st.caption(
-        "Not limited to 'this weekend' — ask about next Friday, any specific date, "
-        "or describe a vibe and let it find the right night."
+        "**Ask anything about Berlin raves — live events fetched straight from Resident Advisor.** "
+        "What's on this Friday, what fits your taste, what's playing at Tresor this weekend. "
+        "Every event name links to its RA page. Rate picks 👍/👎 to sharpen future recommendations."
     )
     st.divider()
-    _render_digest_section()
-    _render_chat("weekend", "Ask about Berlin events to get started — any date, any genre, any price range.")
+    _render_chat("weekend", "What's on in Berlin this weekend? Ask — any date, genre, or budget.")
     _handle_chat_input("weekend", settings,
-                       placeholder="What's on this Friday? / Hypnotic techno under €20 / Which fits my taste?")
+                       placeholder="What's on this Friday? / Hypnotic techno under €20 / What fits my taste?")
 
 
 def _tab_learn(settings: dict) -> None:
     st.markdown(
-        "**Your electronic music and rave culture reference.** Genres and subgenres, "
-        "BPM signatures, harmonic analysis, Berlin scene history, record labels, what to "
-        "expect at your first rave, and how to look after yourself after. "
-        "Answers come from the curated Rave Atlas knowledge base."
-    )
-    st.caption(
-        "Try: genre history, BPM ranges, what a specific label sounds like, "
-        "rave etiquette and door culture, harm reduction, chord theory in house vs techno."
+        "**Everything about raves, electronic music, and Berlin's scene — in one place.** "
+        "Genres and subgenres, BPM signatures, harmonic analysis, scene history, record labels, "
+        "rave etiquette, harm reduction. Plus the Berlin weekend digest: a weekly overview of "
+        "what's happening, auto-generated each Friday."
     )
     st.divider()
+    _render_digest_section()
+    st.divider()
+    st.markdown("#### Ask the Rave Wiki")
+    st.caption(
+        "Genre history, label sounds, rave etiquette and door culture, "
+        "harm reduction, chord theory in house vs techno — grounded in the knowledge base."
+    )
     _render_chat("learn", "Ask anything about electronic music, Berlin's scene, or rave culture.")
     _handle_chat_input("learn", settings,
                        placeholder="What is minimal techno? / History of Tresor / What should I bring to a rave?")
@@ -602,38 +600,49 @@ def _tab_mix_builder(settings: dict) -> None:
 
 def _tab_beyond_berlin(settings: dict) -> None:
     st.markdown(
-        "**Live Resident Advisor listings for any European city.** "
-        "The Berlin agent has full local depth, but the RA events tool works across Europe. "
-        "Pick a city, set your dates, and get real listings directly from Resident Advisor."
+        "**Live Resident Advisor listings for any European city — including Berlin.** "
+        "Pick a region, then a city, set your dates, and get real RA listings. "
+        "Use the region filter to narrow the list — no need to scroll 70+ cities."
     )
     st.caption(
-        "Coverage is best for major scenes: Amsterdam, Paris, Barcelona, Belgrade, "
-        "Vienna, Zurich, Copenhagen. Smaller cities may return few or no results. "
-        "This is a direct browse — not an agent conversation."
+        "Coverage is best for major scenes: Berlin, Amsterdam, Paris, Barcelona, Belgrade, "
+        "Vienna, Zurich, Copenhagen. Smaller cities may return few or no results."
     )
     st.divider()
 
-    col_city, col_from, col_to = st.columns([2, 1, 1])
-    # Show all cities except Berlin (home city already covered in This Weekend)
-    other_cities = [c for c in config.AVAILABLE_CITIES if c != "Berlin"]
-    city = col_city.selectbox("City", other_cities, index=0)
+    # ── Region + city selectors ───────────────────────────────────────────────
+    col_region, col_city = st.columns([2, 3])
 
+    region_names = list(config.CITY_REGIONS.keys())
+    region = col_region.selectbox(
+        "Region",
+        region_names,
+        index=0,
+        help="Pick a region to filter the city list.",
+    )
+    region_cities = config.CITY_REGIONS.get(region) or []
+    city_list = region_cities if region_cities else config.AVAILABLE_CITIES
+    city = col_city.selectbox("City", city_list, index=0)
+
+    # ── Date range ────────────────────────────────────────────────────────────
+    col_from, col_to = st.columns(2)
     today = date.today()
-    default_from = today + timedelta(days=(4 - today.weekday()) % 7)  # next/this Friday
+    default_from = today + timedelta(days=(4 - today.weekday()) % 7 or 7)
     default_to = default_from + timedelta(days=3)
     date_from = col_from.date_input("From", value=default_from)
-    date_to = col_to.date_input("To", value=default_to)
+    date_to   = col_to.date_input("To",   value=default_to)
 
+    # ── Optional filters ──────────────────────────────────────────────────────
     col_genre, col_price = st.columns([3, 2])
     genres = col_genre.multiselect(
         "Genres (optional)",
         ["Techno", "House", "Minimal", "Tech House", "Trance", "Drum & Bass",
          "Dubstep", "Ambient", "Disco", "Electro", "Hardcore", "Industrial", "EBM"],
-        help="Filters the returned listings by RA's own genre tags.",
+        help="Filters returned listings by RA's genre tags.",
     )
     max_price = col_price.slider("Max price (€, 0 = no limit)", 0, 80, 0, 5)
 
-    if st.button("Find events on RA", type="primary"):
+    if st.button("Find rave parties on RA", type="primary"):
         if date_to < date_from:
             st.error("'To' date must be on or after 'From' date.")
         else:
@@ -644,7 +653,12 @@ def _tab_beyond_berlin(settings: dict) -> None:
                 filters["max_price"] = float(max_price)
             from tools.events import find_events as _find
             with st.spinner(f"Querying Resident Advisor for {city}…"):
-                events = _find(date_from.isoformat(), date_to.isoformat(), filters=filters or None, city=city)
+                events = _find(
+                    date_from.isoformat(),
+                    date_to.isoformat(),
+                    filters=filters or None,
+                    city=city,
+                )
             st.session_state["intl_results"] = {"city": city, "events": events}
             st.rerun()
 
@@ -655,12 +669,11 @@ def _tab_beyond_berlin(settings: dict) -> None:
         if not events:
             st.info(
                 f"No Resident Advisor listings found for **{res['city']}** in that date range. "
-                "RA's coverage varies — larger cities (Amsterdam, Paris, Barcelona, Vienna, "
-                "Copenhagen, Belgrade) return the most results. Try widening the dates, "
-                "or pick a different city."
+                "Try widening the dates, or pick a major scene city — "
+                "Amsterdam, Paris, Barcelona, Belgrade, and Zurich tend to have the most listings."
             )
         else:
-            st.markdown(f"**{len(events)} event(s) in {res['city']}** via Resident Advisor")
+            st.markdown(f"**{len(events)} rave parties in {res['city']}** via Resident Advisor")
             for evt in events[:30]:
                 _render_event_card(evt)
 
@@ -676,17 +689,17 @@ def _render_intro() -> None:
     with st.expander("👋 New here? How Rave Atlas works", expanded=no_activity):
         st.markdown(
             "**Rave Atlas is Berlin-first.** The agent knows the venues, labels, and scene "
-            "history in real depth. Everything else is covered honestly but without the same detail.\n\n"
-            "- **🗓 Raves in Berlin** — live Berlin events from Resident Advisor, ranked by "
-            "fit to your taste. Any date, any genre, any price range. Every event name links "
-            "straight to its RA page. Rate picks 👍/👎 to teach the agent your preferences.\n"
-            "- **📖 Rave Wiki** — genres, BPM signatures, scene history, labels, track "
-            "anatomy, rave culture, harm reduction. Grounded in the curated knowledge base.\n"
+            "in real depth. Everything else is covered honestly but without the same detail.\n\n"
+            "- **🗓 Raves in Berlin** — ask anything about Berlin events. The agent fetches "
+            "live RA listings, ranks them by taste, and links every event name to its RA page. "
+            "Any date, any genre, any budget.\n"
             "- **🎛 Set Builder** — describe a slot or vibe, get a 1-hour playable set: "
-            "16 tracks with a warm-up / build / peak / close arc, Deezer previews, and YouTube links.\n"
-            "- **🌍 Explore Europe** — direct RA event browse for any European city. "
-            "Coverage is best for major scenes (Amsterdam, Paris, Barcelona, Belgrade, Zurich, Copenhagen).\n\n"
-            "Adjust tone in the sidebar: **concise** (just the facts), **elaborated** (full context), "
+            "16 tracks with warm-up / build / peak / close arc, 30s Deezer previews, YouTube links.\n"
+            "- **📖 Rave Wiki** — genres, BPM signatures, scene history, labels, track anatomy, "
+            "rave culture, harm reduction — plus the Berlin weekend digest at the top.\n"
+            "- **🌍 Rave Parties in Europe** — direct RA browse for any European city (including "
+            "Berlin). Filter by region to avoid scrolling 70+ cities.\n\n"
+            "Adjust tone: **concise** (just the facts), **elaborated** (full context), "
             "or **expert** (insider depth with labels, BPMs, and scene history)."
         )
 
@@ -707,15 +720,15 @@ def main() -> None:
     st.caption("Berlin's electronic music scene — planner, music school, mix builder.")
     _render_intro()
 
-    tab_weekend, tab_learn, tab_mix, tab_beyond = st.tabs(
-        ["🗓 Raves in Berlin", "📖 Rave Wiki", "🎛 Set Builder", "🌍 Explore Europe"]
+    tab_weekend, tab_mix, tab_learn, tab_beyond = st.tabs(
+        ["🗓 Raves in Berlin", "🎛 Set Builder", "📖 Rave Wiki", "🌍 Rave Parties in Europe"]
     )
     with tab_weekend:
         _tab_weekend(settings)
-    with tab_learn:
-        _tab_learn(settings)
     with tab_mix:
         _tab_mix_builder(settings)
+    with tab_learn:
+        _tab_learn(settings)
     with tab_beyond:
         _tab_beyond_berlin(settings)
 
