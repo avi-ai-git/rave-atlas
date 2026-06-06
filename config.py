@@ -178,7 +178,7 @@ AVAILABLE_CITIES: list[str] = [
     "Oslo",
     "Bergen",
     "Helsinki",
-    # ── Eastern Europe ───────────────────────────────────────────────────────
+    # ── Central & Eastern Europe ─────────────────────────────────────────────
     "Warsaw",
     "Kraków",
     "Gdańsk",
@@ -214,7 +214,7 @@ CITY_REGIONS: dict[str, list[str]] = {
     "Austria & Switzerland": [
         "Vienna", "Graz", "Zurich", "Geneva", "Basel",
     ],
-    "Benelux": [
+    "Netherlands & Belgium": [
         "Amsterdam", "Rotterdam", "Utrecht", "Eindhoven",
         "Brussels", "Ghent", "Antwerp",
     ],
@@ -232,7 +232,7 @@ CITY_REGIONS: dict[str, list[str]] = {
         "Copenhagen", "Stockholm", "Gothenburg", "Malmö",
         "Oslo", "Bergen", "Helsinki",
     ],
-    "Eastern Europe & Turkey": [
+    "Central & Eastern Europe": [
         "Warsaw", "Kraków", "Gdańsk", "Prague", "Brno",
         "Budapest", "Bucharest", "Cluj-Napoca",
         "Belgrade", "Zagreb", "Ljubljana",
@@ -294,7 +294,7 @@ if __name__ == "__main__":
     print()
     print("AVAILABLE_MODELS:")
     for m in AVAILABLE_MODELS:
-        print(f"  [{m['provider']:12s}]  {m['id']}  —  {m['name']}")
+        print(f"  [{m['provider']:12s}]  {m['id']}  -  {m['name']}")
     print()
 
     assert OPENROUTER_BASE_URL, "OPENROUTER_BASE_URL must not be empty"

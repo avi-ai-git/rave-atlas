@@ -70,6 +70,37 @@ class TestWeekendDates:
         d = weekend_dates()
         assert _date.fromisoformat(d["this_friday"]).weekday() == 4
 
+    def test_friday_anchor_is_today_when_today_is_friday(self, monkeypatch):
+        """The old code added 7 days when today was Friday -- this nails that bug.
+        June 5, 2026 is a Friday (weekday=4); the anchor must be that same date.
+        """
+        from datetime import date as _date
+        from prompts import system as sys_mod
+        friday = _date(2026, 6, 5)  # June 5 2026 = Friday
+        monkeypatch.setattr(sys_mod, "date", type("_D", (), {"today": staticmethod(lambda: friday)})())
+        d = sys_mod.weekend_dates()
+        assert d["this_friday"] == "2026-06-05", (
+            f"On a Friday, this_friday must be today; got {d['this_friday']}"
+        )
+        assert d["this_sunday"] == "2026-06-07", (
+            f"this_sunday should be 2 days after the anchor Friday; got {d['this_sunday']}"
+        )
+
+    def test_friday_anchor_is_yesterday_when_today_is_saturday(self, monkeypatch):
+        """On Saturday the weekend already opened; this_friday must be yesterday.
+        June 6, 2026 is a Saturday (weekday=5); this_friday must be June 5.
+        Old bug: (4-5)%7 = 6, added 6 days forward -> next Friday June 12.
+        """
+        from datetime import date as _date
+        from prompts import system as sys_mod
+        saturday = _date(2026, 6, 6)  # June 6 2026 = Saturday
+        monkeypatch.setattr(sys_mod, "date", type("_D", (), {"today": staticmethod(lambda: saturday)})())
+        d = sys_mod.weekend_dates()
+        assert d["this_friday"] == "2026-06-05", (
+            f"On Saturday, this_friday must be yesterday; got {d['this_friday']}"
+        )
+        assert d["today"] == "2026-06-06", f"today must be June 6; got {d['today']}"
+
 
 # ── web_search ────────────────────────────────────────────────────────────────
 

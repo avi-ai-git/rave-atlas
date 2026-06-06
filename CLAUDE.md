@@ -87,6 +87,7 @@ Each phase produced one commit. The sequence is dependency-correct: each phase o
 | 12 | `app.py` (full) | Streamlit UI: 4 tabs (Weekend/Learn/Crate agent + Go-International browse), model picker, sliders, tool-trace expander, event cards with RA links, ratings, cost display | Sonnet | think harder |
 | 13 | `tests/` | pytest suite: safety, tools, injection corpus (OWASP + jailbreaks), setlist | Sonnet | think |
 | 14 | `README.md`, LangSmith wiring | Observability, docs, Streamlit Cloud deploy prep | Sonnet | think |
+| 17 | `tools/web.py`, `automation/kb_enrich.py`, `tests/test_fixes.py`, `docs/KB_EXPANSION.md`; updates to `app.py`, `agent.py`, `config.py`, `llm_client.py`, `prompts/system.py`, `ingest.py`, `tools/events.py`, `automation/weekend_digest.py`, `pyproject.toml`, `requirements.txt` | Critical bug fixes (pysqlite3 Streamlit Cloud crash; Friday date resolution; EUR currency display). Mistral Large as second selectable chat model (reuses MISTRAL_API_KEY). Keyless web_search tool (DuckDuckGo, no API key). Reddit/web KB enrichment pipeline. Full UI copy pass (de-emoji, no em/en dashes, humanised text). Region filter regrouped (Benelux renamed; Eastern Europe renamed). Digest moved to Berlin tab with RA event links. 162 tests. | Sonnet | think harder |
 
 ---
 
@@ -312,3 +313,51 @@ RAG alone could power the Learn tab. Prompt engineering alone could build a fixe
 | Knowledge base is static markdown | KB must be manually updated as genres evolve | Add an admin UI for KB editing + re-ingestion trigger |
 | Ollama Cloud model availability | `gemma3:27b` and `gpt-oss:120b` availability depends on Ollama Cloud's hosted catalogue | Fall back to OpenRouter equivalents if Ollama Cloud changes its model roster |
 | OpenRouter data-policy guardrail | Some Anthropic models (notably `claude-sonnet-4.6`) return 404 on accounts with restrictive default privacy settings | Visit openrouter.ai/settings/privacy and allow providers; or leave `DEFAULT_MODEL` at `anthropic/claude-haiku-4.5` (the default — always unblocked) |
+| DuckDuckGo web search has no SLA | `web_search` may return empty results when rate-limited or blocked | Replace with a Serper or SerpAPI key for consistent web results |
+| pysqlite3 Streamlit Cloud dependency | The sqlite3 swap must be the very first code in `app.py`; adding any import before it will reintroduce the AttributeError crash | The pysqlite3-binary wheel is Linux-only (correct marker in requirements); never move the swap block |
+
+---
+
+## Innovative use cases and workflows
+
+These are real, tested conversation flows that demonstrate the agent and tools working together. A reviewer or hiring manager reading this should understand what the app is actually capable of beyond the feature list.
+
+**1. The first-timer crash course.** Ask "I've never been to a Berlin techno club, where do I start?" The agent explains the scene (Rave Wiki), names entry-level venues and what the door policy is like (KB), and offers to find an event this weekend that suits a newcomer (find_events + compare_events).
+
+**2. The genre-matching night planner.** "I love Four Tet and Floating Points, what's on this weekend?" find_events fetches Berlin events, compare_events ranks them against a taste profile that has been built up from previous ratings, and the agent explains why the top pick fits.
+
+**3. The era-specific night hunt.** "I want something with a 90s Detroit techno sound tonight." RA has no era filter. The agent fetches events for today, reasons over lineups and genre tags to surface the closest match (a classic techno night, a vinyl-only party), and tells you honestly that the era match is inferred from the lineup, not guaranteed.
+
+**4. The budget-maximised weekend.** "What's free or under 10 euros this weekend, and is any of it actually worth going to?" Filtered event fetch, ranked honestly against profile, no minimum-viable-answer padding.
+
+**5. The before-you-go artist prep.** "Tell me about Surgeon before I see him tonight." enrich_artist pulls label history (Downwards Records, Tresor), genre lineage (Birmingham industrial techno), and notable releases from Discogs. You arrive knowing what to expect.
+
+**6. The party set builder.** "Build me a 3-hour midnight set for a house party, deep and melodic, 20 tracks." Returns a full energy arc from 2/10 at opening to 8/10 at peak, with artist, title, reason per track, and 30-second Deezer previews plus YouTube links.
+
+**7. The comedown set.** "It's 7am, I just got home from Berghain, build me something ambient for an hour." Energy arc 5 to 1, six tracks, Burial-adjacent textures. The model understands this is the end of a night, not the start.
+
+**8. The genre learning ladder.** "Explain the difference between minimal techno, industrial techno, and EBM." The Rave Wiki retrieves from the curated KB and returns specific artists, BPM ranges, hardware signatures, and YouTube links so you hear the distinctions rather than just read them.
+
+**9. The label deep-dive.** "Tell me about Ostgut Ton, who records on it, and is anyone from that label playing this weekend?" KB for label history, find_events for the weekend, enrich_artist to check lineups. Three tools, one turn.
+
+**10. The multi-city Europe trip.** Use the Rave Parties in Europe tab to browse Amsterdam, Berlin, and Prague across the same week. Each city shows live RA listings. Plan three nights in three cities without opening three browser tabs.
+
+**11. The Friday Telegram digest.** Set up the GitHub Actions cron and every Friday morning your phone gets a Berlin weekend briefing with each event name linked to its RA page. The app does not need to be open.
+
+**12. The knowledge base for your own city.** Edit `automation/kb_enrich.py` with the subreddits and web sources for your local scene, run it, and the Rave Wiki now covers your city's clubs, labels, and history. The ingestion pipeline is idempotent — re-run it any time.
+
+**13. The crate-digger's reference.** "I found a white label from roughly 1994, dark industrial kick, 138 BPM, one-bar loop. What label era is this?" The Rave Wiki explains the Tresor/Underground Resistance sound, the Roland 909 signature, and the Detroit-to-Berlin pipeline that defined that production aesthetic.
+
+**14. The touring DJ homework.** "I'm playing a warm-up set at Fabric next month, it's a deep house night. Prep me." web_search for recent Fabric lineups (KB gap), explain_music for deep house theory, build_setlist for a reference arc. All cited.
+
+**15. The regular's weekly ritual.** Rate events after attending. The agent updates your taste profile in SQLite. After a month the ranking is personal: if you have consistently rated melodic nights up and hard industrial nights down, the agent reflects that without you having to state it every time.
+
+**16. The producer's structural reference.** "What BPM range does a Tresor-style techno track sit at, and how is it structured?" The KB has dedicated track anatomy content covering intro length, build patterns, drop timing, and typical arrangement lengths at club BPMs.
+
+**17. The venue comparison.** "Compare Watergate and about blank for a melodic techno night — vibe, sound system, door policy." The KB holds first-hand venue commentary, not press-release descriptions. The agent names the tradeoffs honestly.
+
+**18. The scene history explainer.** "How did Berlin become the world centre of techno after reunification?" Full Rave Wiki answer: Tresor founding in 1991, the geography (Mitte warehouses, Friedrichshain power stations), the East-West cultural collision, the role of Detroit imports (Jeff Mills, Robert Hood) in shaping the Berlin sound.
+
+**19. The partner prep.** "My partner loves this music but I know nothing, what should I understand before our night out?" Casual-tone introduction to the genre, the culture, the door etiquette, and one specific venue recommendation, without condescension.
+
+**20. The KB expansion workflow.** Run `uv run python automation/kb_enrich.py --dry-run` to preview Reddit and web content. Review the draft markdown files in `knowledge_base/community/`. Edit for accuracy. Run `uv run python ingest.py` to push the new content into ChromaDB. The Rave Wiki now covers whatever you added — permanently, until the next container restart on cloud.

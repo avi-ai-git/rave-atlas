@@ -22,11 +22,28 @@ def weekend_dates() -> dict[str, str]:
 
     Keys: today, this_friday, this_saturday, this_sunday, next_friday,
           next_saturday, next_sunday.
+
+    "this_friday" is the anchor Friday of the current or upcoming weekend:
+    - Mon-Thu: the next upcoming Friday
+    - Fri: today
+    - Sat: yesterday (the Friday that opened this weekend)
+    - Sun: two days ago (the Friday that opened this weekend)
+
+    This ensures "this weekend" always resolves to the Fri-Sun block the user
+    is currently in or is about to enter, never to next weekend by mistake.
     """
     today = date.today()
-    # Weekday indices: Monday=0 … Sunday=6
-    days_to_friday = (4 - today.weekday()) % 7  # 0 if today IS Friday
-    this_fri = today + timedelta(days=days_to_friday if days_to_friday > 0 else 7)
+    weekday = today.weekday()  # Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6
+
+    if weekday <= 3:        # Mon-Thu: count forward to upcoming Friday
+        this_fri = today + timedelta(days=4 - weekday)
+    elif weekday == 4:      # Friday: today is the anchor
+        this_fri = today
+    elif weekday == 5:      # Saturday: yesterday was the anchor Friday
+        this_fri = today - timedelta(days=1)
+    else:                   # Sunday: two days ago was the anchor Friday
+        this_fri = today - timedelta(days=2)
+
     return {
         "today":         today.isoformat(),
         "this_friday":   this_fri.isoformat(),

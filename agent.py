@@ -393,10 +393,15 @@ def run_agent(
     # and the resolved weekend range in the trusted channel right next to the
     # question is what makes "tonight" / "this weekend" reliably resolve.
     d = weekend_dates()
+    # On Sat/Sun we are already inside the weekend; use today as the effective
+    # start so find_events does not request events from a past Friday night.
+    # On Mon-Thu the upcoming Friday is always >= today so max() has no effect.
+    # On Friday today == this_friday, also a no-op.
+    weekend_start = max(d["today"], d["this_friday"])
     date_preamble = (
         f"[CONTEXT, system, trustworthy] Today is {d['today']}. "
         f"tonight = {d['today']}; "
-        f"this weekend = {d['this_friday']} to {d['this_sunday']}; "
+        f"this weekend = {weekend_start} to {d['this_sunday']}; "
         f"next weekend = {d['next_friday']} to {d['next_sunday']}. "
         f"Resolve any relative date in the user's message to these ISO dates "
         f"before calling find_events."
