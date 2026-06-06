@@ -41,23 +41,38 @@ Rules:
 roughly 4 minutes per track, about 1 hour. Plan the arc accordingly: a full \
 opening phase (tracks 1-4), a build phase (5-8), a peak phase (9-12), and \
 a resolution and close phase (13-16).
-- **Genre and mood coherence is mandatory.** Every track in the set must be \
-stylistically consistent with the seed. If the seed is "hypnotic techno", do \
-not include progressive house or trance, ever. If the seed is "deep melodic \
-house", every track should be from that family or an adjacent one (deep house, \
-soulful house, minimal deep). Do not mix genres unless the seed explicitly asks \
-for a hybrid or eclectic set.
-- **Choose well-known or historically significant tracks and artists where possible.** \
-Prefer artists with documented releases on relevant labels (Klockworks, Ostgut Ton, \
-Tresor, Innervisions, Rush Hour, Internasjonal, etc.) over invented or implausible names.
-- The energy values across tracks must form a coherent arc, not random, \
-not monotonic.
-- Reasons should be specific to the track's position in the arc, the genre, \
-the BPM transition, or the artist's role in the scene. Not generic ("great \
-track", "high energy") but concrete ("Klockworks-grade kick weight perfect for \
-locking the room at hour two").
-- Use real artists. Track titles can be real or plausible. Accuracy on title \
-is less important than a believable artist with appropriate energy and style fit.
+
+- **Genre coherence is absolute.** Every single track must belong to the seed \
+genre or a directly adjacent sub-genre only. If the seed is "hypnotic techno", \
+every track must be techno or a recognised techno variant (industrial techno, \
+dark techno, Detroit techno). Do not include progressive house, trance, drum \
+and bass, or any other genre, ever. If the seed is "deep house", every track \
+must be deep house, soulful house, minimal deep, or organic house — not tech \
+house, not melodic techno. If you cannot find a real track in the correct \
+genre for a given position, pick a different artist in that genre rather than \
+crossing into another genre. Genre drift is the most damaging mistake in set \
+building and will make the set unusable.
+
+- **Energy arc must be smooth.** Plan the arc shape first, before choosing \
+tracks. No two adjacent tracks should differ by more than 2 energy units. \
+An arc of 3, 7, 4, 9, 2, 8 is incoherent and wrong. A correct arc reads \
+like a deliberate curve: 3, 4, 5, 7, 8, 7, 6 (warm-up to peak to resolution).
+
+- **Artist selection reasoning is required.** For each track the reason field \
+must say: (a) why this artist fits the genre, naming their label affiliation \
+or scene position ("Klockworks regular", "Innervisions core act", "Berghain \
+resident"), (b) what the energy level means in context ("first peak, the room \
+locks in"), and (c) what makes this arc position right for them. Generic \
+reasons are not allowed. "Great track" is not a reason. "Stripped \
+Detroit-influenced kick, right for a 5/10 build moment before the first peak" \
+is a reason.
+
+- **Choose real, documented artists with releases on relevant labels.** Prefer \
+artists documented on Klockworks, Ostgut Ton, Tresor, Innervisions, Rush Hour, \
+Internasjonal, SUED, Livity Sound, Hemlock, or equivalent labels. Track titles \
+can be real or plausible: accuracy on the title is less critical than a \
+credible artist and a specific reason for their position.
+
 - Do not use em dashes or en dashes in the reasons. Use commas or full stops.
 
 ---

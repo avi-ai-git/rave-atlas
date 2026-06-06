@@ -111,13 +111,12 @@ MODEL_PRICES: dict[str, tuple[float, float]] = {
 
 HOME_CITY: str = os.environ.get("HOME_CITY", "Berlin")
 
-# European cities with meaningful Resident Advisor coverage.
-# Organised by region. RA's density varies: Berlin, Amsterdam, Paris, Zurich,
-# Barcelona, Belgrade and the major German cities are reliable; smaller cities
-# (Aachen, Bonn, Wrocław, etc.) often return thin or empty results and are
-# excluded to avoid misleading the user. Coverage is checked live by
-# tools/events.py → resolve_area_id(); an unknown city resolves to None and
-# the tab shows an honest "no listings" message rather than a fallback.
+# European cities with meaningful Resident Advisor coverage (~100 cities).
+# RA density is highest in Berlin, Amsterdam, London, Paris, Barcelona, Belgrade,
+# and the major German cities. Smaller towns are excluded — RA's listings there
+# are near-empty and the honest move is not to offer cities we can't deliver on.
+# Coverage is checked live: tools/events.py resolve_area_id() returns None for
+# unknown cities and the Explore tab shows an honest "no listings" message.
 AVAILABLE_CITIES: list[str] = [
     # ── Germany ──────────────────────────────────────────────────────────────
     "Berlin",       # home city — full KB depth
@@ -132,13 +131,24 @@ AVAILABLE_CITIES: list[str] = [
     "Dresden",
     "Mannheim",
     "Hannover",
+    # ── United Kingdom & Ireland ──────────────────────────────────────────────
+    "London",
+    "Manchester",
+    "Bristol",
+    "Edinburgh",
+    "Glasgow",
+    "Birmingham",
+    "Leeds",
+    "Dublin",
     # ── Austria & Switzerland ─────────────────────────────────────────────────
     "Vienna",
     "Zurich",
     "Geneva",
     "Basel",
+    "Bern",
     "Graz",
-    # ── Netherlands & Belgium ─────────────────────────────────────────────────
+    "Lausanne",
+    # ── Netherlands, Belgium & Luxembourg ────────────────────────────────────
     "Amsterdam",
     "Rotterdam",
     "Utrecht",
@@ -146,6 +156,7 @@ AVAILABLE_CITIES: list[str] = [
     "Brussels",
     "Ghent",
     "Antwerp",
+    "Luxembourg City",
     # ── France ───────────────────────────────────────────────────────────────
     "Paris",
     "Lyon",
@@ -155,12 +166,16 @@ AVAILABLE_CITIES: list[str] = [
     "Strasbourg",
     "Lille",
     "Nantes",
+    "Nice",
+    "Montpellier",
     # ── Iberia ───────────────────────────────────────────────────────────────
     "Barcelona",
     "Madrid",
     "Valencia",
     "Ibiza",
     "Seville",
+    "Bilbao",
+    "Palma",
     "Lisbon",
     "Porto",
     # ── Italy ────────────────────────────────────────────────────────────────
@@ -170,33 +185,55 @@ AVAILABLE_CITIES: list[str] = [
     "Florence",
     "Turin",
     "Naples",
-    # ── Scandinavia ──────────────────────────────────────────────────────────
+    "Palermo",
+    "Trieste",
+    # ── Scandinavia & Iceland ─────────────────────────────────────────────────
     "Copenhagen",
+    "Aarhus",
     "Stockholm",
     "Gothenburg",
     "Malmö",
     "Oslo",
     "Bergen",
+    "Trondheim",
     "Helsinki",
-    # ── Central & Eastern Europe ─────────────────────────────────────────────
+    "Reykjavik",
+    # ── Baltic States ─────────────────────────────────────────────────────────
+    "Tallinn",
+    "Riga",
+    "Vilnius",
+    # ── Central Europe ────────────────────────────────────────────────────────
     "Warsaw",
     "Kraków",
+    "Wrocław",
     "Gdańsk",
+    "Katowice",
     "Prague",
     "Brno",
+    "Bratislava",
     "Budapest",
+    # ── Balkans ───────────────────────────────────────────────────────────────
+    "Belgrade",
+    "Novi Sad",
+    "Zagreb",
+    "Split",
+    "Ljubljana",
+    "Sofia",
+    "Plovdiv",
     "Bucharest",
     "Cluj-Napoca",
-    "Belgrade",
-    "Zagreb",
-    "Ljubljana",
-    "Vilnius",
-    "Riga",
-    "Tallinn",
-    # ── Greece & Turkey ──────────────────────────────────────────────────────
+    # ── Greece ────────────────────────────────────────────────────────────────
     "Athens",
     "Thessaloniki",
+    # ── Turkey ────────────────────────────────────────────────────────────────
     "Istanbul",
+    "Izmir",
+    # ── Caucasus & Eastern Europe ─────────────────────────────────────────────
+    # Tbilisi: one of Europe's most talked-about underground scenes (Bassiani,
+    # Khidi, Café Gallery). Kyiv: Closer, Mezzanine, and a thriving pre-war scene.
+    "Tbilisi",
+    "Kyiv",
+    "Yerevan",
 ]
 
 # ── City regions for the Explore tab filter ──────────────────────────────────
@@ -204,6 +241,7 @@ AVAILABLE_CITIES: list[str] = [
 # Keys become option labels in the region selector.
 # Empty list for "All Europe" is a sentinel — the tab shows all cities.
 # Berlin is included (distinct from the Berlin agent: this is a plain RA browse).
+# ~100 cities total across 14 regions.
 
 CITY_REGIONS: dict[str, list[str]] = {
     "All Europe": [],
@@ -211,32 +249,52 @@ CITY_REGIONS: dict[str, list[str]] = {
         "Berlin", "Hamburg", "Cologne", "Frankfurt", "Munich", "Leipzig",
         "Düsseldorf", "Stuttgart", "Nuremberg", "Dresden", "Mannheim", "Hannover",
     ],
-    "Austria & Switzerland": [
-        "Vienna", "Graz", "Zurich", "Geneva", "Basel",
+    "United Kingdom & Ireland": [
+        "London", "Manchester", "Bristol", "Edinburgh", "Glasgow",
+        "Birmingham", "Leeds", "Dublin",
     ],
-    "Netherlands & Belgium": [
+    "Austria & Switzerland": [
+        "Vienna", "Graz", "Zurich", "Geneva", "Basel", "Bern", "Lausanne",
+    ],
+    "Netherlands, Belgium & Luxembourg": [
         "Amsterdam", "Rotterdam", "Utrecht", "Eindhoven",
-        "Brussels", "Ghent", "Antwerp",
+        "Brussels", "Ghent", "Antwerp", "Luxembourg City",
     ],
     "France": [
         "Paris", "Lyon", "Marseille", "Bordeaux", "Toulouse",
-        "Strasbourg", "Lille", "Nantes",
+        "Strasbourg", "Lille", "Nantes", "Nice", "Montpellier",
     ],
-    "Southern Europe": [
-        "Barcelona", "Madrid", "Valencia", "Ibiza", "Seville",
+    "Iberia": [
+        "Barcelona", "Madrid", "Valencia", "Ibiza", "Seville", "Bilbao", "Palma",
         "Lisbon", "Porto",
+    ],
+    "Italy": [
         "Milan", "Rome", "Bologna", "Florence", "Turin", "Naples",
+        "Palermo", "Trieste",
+    ],
+    "Scandinavia & Iceland": [
+        "Copenhagen", "Aarhus", "Stockholm", "Gothenburg", "Malmö",
+        "Oslo", "Bergen", "Trondheim", "Helsinki", "Reykjavik",
+    ],
+    "Baltic States": [
+        "Tallinn", "Riga", "Vilnius",
+    ],
+    "Central Europe": [
+        "Warsaw", "Kraków", "Wrocław", "Gdańsk", "Katowice",
+        "Prague", "Brno", "Bratislava", "Budapest",
+    ],
+    "Balkans": [
+        "Belgrade", "Novi Sad", "Zagreb", "Split", "Ljubljana",
+        "Sofia", "Plovdiv", "Bucharest", "Cluj-Napoca",
+    ],
+    "Greece": [
         "Athens", "Thessaloniki",
     ],
-    "Scandinavia": [
-        "Copenhagen", "Stockholm", "Gothenburg", "Malmö",
-        "Oslo", "Bergen", "Helsinki",
+    "Turkey": [
+        "Istanbul", "Izmir",
     ],
-    "Central & Eastern Europe": [
-        "Warsaw", "Kraków", "Gdańsk", "Prague", "Brno",
-        "Budapest", "Bucharest", "Cluj-Napoca",
-        "Belgrade", "Zagreb", "Ljubljana",
-        "Vilnius", "Riga", "Tallinn", "Istanbul",
+    "Caucasus & Eastern Europe": [
+        "Tbilisi", "Kyiv", "Yerevan",
     ],
 }
 

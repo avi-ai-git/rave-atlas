@@ -177,6 +177,15 @@ to ask "which fits me". If the user asked about events and you have multiple \
 results, immediately call compare_events to rank them. This gives personalised \
 recommendations on the first response, not after a second prompt.
 
+   IMPORTANT, avoid re-fetching events already shown: the conversation history \
+is preserved across turns. If you have already called find_events and listed \
+events in this conversation, do NOT call find_events again unless the user \
+explicitly asks for a refresh, asks about different dates, or asks for more \
+options. Follow-up questions about events already listed ("which is cheapest?", \
+"tell me more about the second one", "why", "what genre is that?") should be \
+answered from the events already in context. Re-fetching the same data on every \
+turn wastes tokens and repeats output the user already saw.
+
 4. **enrich_artist(name)** is for a specific artist's labels, releases, or \
 background, especially when planning whether a specific lineup is worth going to.
 

@@ -149,8 +149,28 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
     .stTabs [data-baseweb="tab"] { padding: 0.4rem 0.6rem; font-size: 0.78rem; }
     h1 { font-size: 1.6rem; }
     .stChatInput > div { border-radius: 10px !important; }
+    /* On mobile, keep sidebar collapsed by default */
+    section[data-testid="stSidebar"] { min-width: 0 !important; }
 }
+
+/* ── Auto-scroll chat to latest message ──────────────────────────────────── */
+/* Scrolls the main content area to the bottom whenever a new message lands. */
+.stChatMessage:last-child { scroll-margin-bottom: 80px; }
 </style>
+<script>
+(function() {
+    function scrollToBottom() {
+        var main = window.parent.document.querySelector('section[data-testid="stMain"] .main');
+        if (main) main.scrollTop = main.scrollHeight;
+        var app = window.parent.document.querySelector('.appview-container');
+        if (app) app.scrollTop = app.scrollHeight;
+    }
+    // Run on load and after short delay to catch Streamlit rerun rendering
+    scrollToBottom();
+    setTimeout(scrollToBottom, 200);
+    setTimeout(scrollToBottom, 600);
+})();
+</script>
 """
 
 
@@ -626,9 +646,10 @@ def _tab_mix_builder(settings: dict) -> None:
 
 def _tab_beyond_berlin(settings: dict) -> None:
     st.markdown(
-        "**Live Resident Advisor listings for any European city, including Berlin.** "
-        "Pick a region, then a city, set your dates, and get real RA listings. "
-        "The region filter narrows the list so you don't scroll through 70+ cities."
+        "**Live Resident Advisor listings from 100 cities across Europe, including Berlin.** "
+        "Pick a region and a city, set your dates, optionally filter by genre or price, "
+        "and get real RA listings. 14 regions from the UK and Scandinavia to the Balkans, "
+        "Turkey, and as far east as Tbilisi and Kyiv."
     )
     st.caption(
         "Coverage is best for major scenes: Berlin, Amsterdam, Paris, Barcelona, Belgrade, "
@@ -655,18 +676,22 @@ def _tab_beyond_berlin(settings: dict) -> None:
     # ── Date range ────────────────────────────────────────────────────────────
     col_from, col_to = st.columns(2)
     today = date.today()
-    default_from = today + timedelta(days=(4 - today.weekday()) % 7 or 7)
-    default_to = default_from + timedelta(days=3)
-    date_from = col_from.date_input("From", value=default_from)
-    date_to   = col_to.date_input("To",   value=default_to)
+    date_from = col_from.date_input("From", value=today)
+    date_to   = col_to.date_input("To",   value=today + timedelta(days=3))
 
     # ── Optional filters ──────────────────────────────────────────────────────
     col_genre, col_price = st.columns([3, 2])
     genres = col_genre.multiselect(
         "Genres (optional)",
-        ["Techno", "House", "Minimal", "Tech House", "Trance", "Drum & Bass",
-         "Dubstep", "Ambient", "Disco", "Electro", "Hardcore", "Industrial", "EBM"],
-        help="Filters returned listings by RA's genre tags.",
+        [
+            "Techno", "House", "Minimal", "Tech House", "Deep House",
+            "Progressive House", "Melodic House & Techno", "Trance", "Psytrance",
+            "Drum & Bass", "Jungle", "UK Garage", "Breaks", "Dubstep",
+            "Ambient", "Experimental", "Electronica", "Noise",
+            "Disco", "Electro", "Afro House", "Bass Music",
+            "Hardcore", "Industrial", "EBM", "Dark Techno",
+        ],
+        help="Filters returned listings by RA's genre tags. Leave empty for all genres.",
     )
     max_price = col_price.slider("Max price (€, 0 = no limit)", 0, 80, 0, 5)
 
