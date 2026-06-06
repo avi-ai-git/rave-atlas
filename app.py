@@ -1,27 +1,28 @@
 """
-Rave Atlas, Streamlit UI.
+Berlin Rave Atlas, Streamlit UI.
 
-Four tabs, a Berlin-first agent, and one deliberate non-agent browser:
+Four tabs, a Berlin-first agent, and one deliberate non-agent browser.
 
   Raves in Berlin        Berlin event discovery, compare, ratings (ReAct agent)
-  Set Builder            1-hour set builder (direct, deterministic tool call)
+  Rave Set Builder       1-hour set builder (direct, deterministic tool call)
   Rave Wiki              KB chat grounded in the knowledge base (ReAct agent, RAG)
-  Rave Parties in Europe browse all European Resident Advisor cities (plain API browse)
+  Beyond Berlin          browse all European Resident Advisor cities (plain API browse)
 
-Why the split: the agent earns its cost where runtime reasoning matters
-(planning a Berlin night across several tools). Set Builder is a single focused
-artefact, so it calls build_setlist directly, which guarantees every set is
-fully enriched with Deezer previews and YouTube links every time. Rave Parties
-in Europe is pure retrieval, so it's an honest, fast browse rather than a chat.
+Why the split. The agent earns its cost where runtime reasoning matters
+(planning a Berlin night across several tools). Rave Set Builder is a single
+focused artefact, so it calls build_setlist directly, which guarantees every
+set is fully enriched with Deezer previews and YouTube links every time. Beyond
+Berlin is pure retrieval, so it is an honest, fast browse rather than a chat.
 
-Chat: each tab keeps its own message list AND its own agent conversation
+Chat. Each tab keeps its own message list and its own agent conversation
 thread, so a Wiki question never bleeds into the Berlin planner's context.
 Messages render oldest to newest directly in the page; Streamlit's chat_input is
 sticky at the bottom. On submit we append and rerun, so everything renders
 through one path.
 
-All agent/tool logic lives in agent.py and tools/. This file is presentation
-and routing only, no LLM calls except the direct build_setlist used by Set Builder.
+All agent and tool logic lives in agent.py and tools/. This file is presentation
+and routing only, no LLM calls except the direct build_setlist used by the set
+builder.
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ from __future__ import annotations
 import sys
 
 try:
-    import pysqlite3  # type: ignore
+    import pysqlite3 # type: ignore
 
     sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
 except ModuleNotFoundError:
@@ -62,24 +63,29 @@ _CSS = """
 /* ── Layout ──────────────────────────────────────────────────────────────── */
 .block-container {
     padding-top: 1.5rem;
-    padding-bottom: 5rem;   /* room for the sticky chat input */
+    padding-bottom: 5rem; /* room for the sticky chat input */
     max-width: 860px;
 }
 h1 { letter-spacing: -0.03em; font-weight: 800; }
 
 /* ── Tabs ────────────────────────────────────────────────────────────────── */
-.stTabs [data-baseweb="tab-list"] { gap: 0.2rem; border-bottom: 1px solid #222; }
+.stTabs [data-baseweb="tab-list"] { gap: 0.5rem; border-bottom: 1px solid #333; }
 .stTabs [data-baseweb="tab"] {
     border-radius: 8px 8px 0 0;
-    padding: 0.45rem 1rem;
+    padding: 0.55rem 1.2rem;
     font-weight: 600;
-    color: #888;
-    font-size: 0.88rem;
+    color: #aaa;
+    font-size: 0.9rem;
+    letter-spacing: 0.01em;
+}
+.stTabs [data-baseweb="tab"]:hover {
+    color: #ddd !important;
+    background: rgba(255,255,255,0.04);
 }
 .stTabs [aria-selected="true"] {
-    background: rgba(214,48,49,0.1);
+    background: rgba(214,48,49,0.12);
     border-bottom: 2px solid #D63031;
-    color: #F0F0F0 !important;
+    color: #F5F5F5 !important;
 }
 
 /* ── Chat messages ────────────────────────────────────────────────────────── */
@@ -112,15 +118,21 @@ h1 { letter-spacing: -0.03em; font-weight: 800; }
 .stChatInput textarea {
     border-radius: 12px !important;
     background: transparent !important;
-    font-size: 0.95rem;
+    font-size: 0.97rem;
+    min-height: 80px !important;
+    padding: 0.75rem 1rem !important;
+    line-height: 1.5 !important;
 }
 
 /* ── Buttons ─────────────────────────────────────────────────────────────── */
 .stButton button { border-radius: 10px; }
 
 /* ── Metrics & captions ──────────────────────────────────────────────────── */
+/* Captions carry real secondary copy (tab subtitles, event meta), so contrast
+   matters. 0.88 keeps them visually secondary while staying readable on the
+   dark background, where a lower opacity dips under WCAG AA. */
 [data-testid="stMetricValue"] { font-size: 1.1rem; }
-.stCaption, [data-testid="stCaptionContainer"] { opacity: 0.78; }
+.stCaption, [data-testid="stCaptionContainer"] { opacity: 0.88; }
 
 /* ── Event & set cards ───────────────────────────────────────────────────── */
 div[data-testid="stVerticalBlockBorderWrapper"] {
@@ -146,7 +158,7 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
 /* ── Mobile ──────────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
     .block-container { padding-left: 0.75rem; padding-right: 0.75rem; max-width: 100%; }
-    .stTabs [data-baseweb="tab"] { padding: 0.4rem 0.6rem; font-size: 0.78rem; }
+    .stTabs [data-baseweb="tab"] { padding: 0.45rem 0.7rem; font-size: 0.8rem; }
     h1 { font-size: 1.6rem; }
     .stChatInput > div { border-radius: 10px !important; }
     /* On mobile, keep sidebar collapsed by default */
@@ -196,8 +208,8 @@ def _init_session() -> None:
         st.session_state["session_id"] = str(uuid.uuid4())
     for tab in ("weekend", "learn"):
         st.session_state.setdefault(f"messages_{tab}", [])
-    st.session_state.setdefault("mix_sets", [])            # list[{seed, setlist}]
-    st.session_state.setdefault("intl_results", None)      # last Beyond Berlin search
+    st.session_state.setdefault("mix_sets", []) # list[{seed, setlist}]
+    st.session_state.setdefault("intl_results", None) # last Beyond Berlin search
     st.session_state.setdefault("total_cost", 0.0)
     st.session_state.setdefault("total_tokens", 0)
     st.session_state.setdefault("rated_events", set())
@@ -212,13 +224,13 @@ def _thread_key(tab: str) -> str:
 
 def _render_sidebar() -> dict[str, Any]:
     with st.sidebar:
-        st.markdown("### Rave Atlas")
+        st.markdown("### Berlin Rave Atlas")
         st.caption("Your guide to Berlin's electronic music scene, and the rave map beyond it.")
         st.divider()
 
         st.markdown("**Model & voice**")
         model_names = [m["name"] for m in config.AVAILABLE_MODELS]
-        model_ids   = [m["id"]   for m in config.AVAILABLE_MODELS]
+        model_ids = [m["id"] for m in config.AVAILABLE_MODELS]
         default_idx = model_ids.index(config.DEFAULT_MODEL) if config.DEFAULT_MODEL in model_ids else 0
 
         if len(config.AVAILABLE_MODELS) == 1:
@@ -227,7 +239,7 @@ def _render_sidebar() -> dict[str, Any]:
             st.caption(f"Model: **{model_names[0]}**", help="To enable more models, uncomment entries in config.py AVAILABLE_MODELS.")
         else:
             selected_name = st.selectbox("Model", model_names, index=default_idx,
-                                         help="Which AI answers. Claude Haiku is fast and cheap; Mistral Large is a capable alternative.")
+                                         help="Which AI answers. Claude Haiku is fast and cheap (the default), Mistral Large is a capable alternative, GPT-OSS 120B is open source and needs an Ollama key.")
             model_id = model_ids[model_names.index(selected_name)]
 
         tone = st.radio(
@@ -259,24 +271,40 @@ def _render_sidebar() -> dict[str, Any]:
                 "Leave it at 1.0 unless answers feel too loose."
             )
             temperature = st.slider("Temperature (creativity)", 0.0, 1.5, 0.7, 0.05)
-            top_p       = st.slider("Top-p (vocabulary breadth)", 0.5, 1.0, 1.0, 0.05)
+            top_p = st.slider("Top-p (vocabulary breadth)", 0.5, 1.0, 1.0, 0.05)
+
+        st.divider()
+        with st.expander("How Berlin Rave Atlas works", expanded=False):
+            st.markdown(
+                "**Four tabs, one agent, a curated knowledge base.**\n\n"
+                "- **Raves in Berlin** fetches live RA events, ranks them by your taste, "
+                "and links every card to its RA page. Rate picks to teach it what you like.\n"
+                "- **Rave Set Builder** takes a brief (slot, vibe, BPM) and builds a "
+                "playable 1-hour set with 30-second previews and YouTube links.\n"
+                "- **Rave Culture & Music** answers anything about genres, labels, scene "
+                "history, rave etiquette, and harm reduction from the curated knowledge "
+                "base. It falls back to web search when needed.\n"
+                "- **Beyond Berlin** browses live RA listings for any European city.\n\n"
+                "Set **Tone** above to control depth. concise for quick answers, "
+                "elaborated for full context, expert for label lineage and BPMs."
+            )
 
         st.divider()
         st.caption("Session usage")
         col_tok, col_cost = st.columns(2)
         col_tok.metric("Tokens", f"{st.session_state['total_tokens']:,}")
-        col_cost.metric("Cost",  f"${st.session_state['total_cost']:.4f}")
+        col_cost.metric("Cost", f"${st.session_state['total_cost']:.4f}")
 
         if st.button("Clear chat history", use_container_width=True):
             for tab in ("weekend", "learn"):
                 st.session_state[f"messages_{tab}"] = []
-            st.session_state["mix_sets"]      = []
-            st.session_state["total_cost"]    = 0.0
-            st.session_state["total_tokens"]  = 0
-            st.session_state["rated_events"]  = set()
+            st.session_state["mix_sets"] = []
+            st.session_state["total_cost"] = 0.0
+            st.session_state["total_tokens"] = 0
+            st.session_state["rated_events"] = set()
             st.rerun()
 
-        st.caption(f"Session `{st.session_state['session_id'][:8]}…`")
+        st.caption(f"Session `{st.session_state['session_id'][:8]}...`")
 
     return {"model_id": model_id, "tone": tone, "temperature": temperature, "top_p": top_p}
 
@@ -309,17 +337,21 @@ def _chips(items: list[str]) -> str:
 
 
 def _event_meta_line(evt: dict) -> str:
-    """One-line 'date · time · venue (area)' for an event card."""
+    """One readable 'Sat 6 Jun, 22:30 to 06:00, Venue, Area' line for a card."""
     bits: list[str] = []
-    if evt.get("date"):
-        bits.append(evt["date"])
-    if evt.get("start_time"):
-        bits.append(evt["start_time"])
+    # date_label / time_label are the cleaned fields from tools/events.py.
+    # Fall back to the raw fields only if an older event dict lacks them.
+    date_text = evt.get("date_label") or evt.get("date") or ""
+    if date_text:
+        bits.append(date_text)
+    time_text = evt.get("time_label") or evt.get("start_time") or ""
+    if time_text:
+        bits.append(time_text)
     venue = evt.get("venue") or ""
     area = evt.get("area") or ""
     if venue:
-        bits.append(f"{venue}" + (f" · {area}" if area else ""))
-    return "  ·  ".join(bits)
+        bits.append(venue + (f", {area}" if area and area != venue else ""))
+    return " · ".join(bits)
 
 
 def _render_event_card(
@@ -335,7 +367,7 @@ def _render_event_card(
     rating_ctx: (session_id, msg_idx) enables 👍/👎 feedback buttons (Weekend tab).
     """
     name = evt.get("name") or "Untitled event"
-    url  = evt.get("url") or ""
+    url = evt.get("url") or ""
     with st.container(border=True):
         head_left, head_right = st.columns([8, 2])
         rank_badge = f'<span class="ra-rank">#{rank}</span> ' if rank else ""
@@ -352,6 +384,9 @@ def _render_event_card(
         meta = _event_meta_line(evt)
         if meta:
             st.caption(meta)
+        address = evt.get("address") or ""
+        if address:
+            st.caption(address)
         if fit:
             st.markdown(fit)
 
@@ -360,7 +395,7 @@ def _render_event_card(
         if genres:
             st.markdown(_chips(genres), unsafe_allow_html=True)
         if lineup:
-            st.caption("Lineup: " + ", ".join(lineup[:8]) + ("…" if len(lineup) > 8 else ""))
+            st.caption("Lineup: " + ", ".join(lineup[:8]) + ("..." if len(lineup) > 8 else ""))
 
         if rating_ctx is not None:
             _rating_buttons(evt, name, rank, *rating_ctx)
@@ -405,7 +440,7 @@ def _render_events_block(tool_calls: list[dict], msg_idx: int) -> None:
     """
     raw_events = _parse_tool_output(tool_calls, "find_events")
     if raw_events is None:
-        return  # find_events wasn't called on this turn
+        return # find_events wasn't called on this turn
     if not isinstance(raw_events, list) or not raw_events:
         st.info("No Resident Advisor events came back for that window. Try a different date or filter.")
         return
@@ -432,12 +467,12 @@ def _render_events_block(tool_calls: list[dict], msg_idx: int) -> None:
         )
 
 
-# ── Set-list card (Set Builder) ───────────────────────────────────────────────
+# ── Set-list card (Rave Set Builder) ──────────────────────────────────────────
 
 def _energy_bar(energy: int) -> str:
     """Render an energy value as a mini visual bar (e.g. ████░░ 6/10)."""
-    filled = round(energy / 2)   # out of 5 blocks for compactness
-    empty  = 5 - filled
+    filled = round(energy / 2) # out of 5 blocks for compactness
+    empty = 5 - filled
     return "█" * filled + "░" * empty + f" {energy}/10"
 
 
@@ -450,7 +485,7 @@ def _render_setlist(sl: dict) -> None:
     st.markdown(f"### {sl.get('title', 'Set')}")
     arc = sl.get("energy_arc", [])
     if arc:
-        st.caption(f"Arc: **{' → '.join(str(e) for e in arc)}**   ({len(tracks)} tracks, ~{len(tracks) * 4} min)")
+        st.caption(f"Arc: **{' → '.join(str(e) for e in arc)}** ({len(tracks)} tracks, ~{len(tracks) * 4} min)")
 
     # ── Summary table (quick overview at a glance) ────────────────────────────
     with st.expander("Track list at a glance", expanded=True):
@@ -507,7 +542,7 @@ def _render_chat(tab_key: str, empty_hint: str) -> None:
     if not messages:
         st.caption(empty_hint)
         return
-    # Event cards are rendered once — for the first assistant message that
+    # Event cards are rendered once, for the first assistant message that
     # called find_events. Follow-up messages never re-render the same cards;
     # the agent's text already references events by name with RA links.
     events_rendered_at: int | None = None
@@ -536,7 +571,7 @@ def _handle_chat_input(tab_key: str, settings: dict, placeholder: str) -> None:
         return
     messages = st.session_state[f"messages_{tab_key}"]
     messages.append({"role": "user", "content": prompt})
-    with st.spinner("Thinking…"):
+    with st.spinner("Thinking..."):
         result = run_agent(
             message=prompt,
             session_id=st.session_state["session_id"],
@@ -555,7 +590,7 @@ def _handle_chat_input(tab_key: str, settings: dict, placeholder: str) -> None:
         "cost_estimate": result["cost_estimate"],
         "model": result["model"],
     })
-    st.session_state["total_cost"]   += result["cost_estimate"]
+    st.session_state["total_cost"] += result["cost_estimate"]
     st.session_state["total_tokens"] += result["usage"]["total_tokens"]
     st.rerun()
 
@@ -574,7 +609,7 @@ def _render_digest_section() -> None:
                 "this to Telegram; here you can generate it on demand."
             )
         if st.button("Generate / refresh digest", key="btn_regen_digest"):
-            with st.spinner("Fetching Berlin events and writing the digest…"):
+            with st.spinner("Fetching Berlin events and writing the digest..."):
                 new_digest = generate_digest(session_id)
             if new_digest:
                 st.success("Digest ready.")
@@ -587,11 +622,10 @@ def _render_digest_section() -> None:
 
 
 def _tab_weekend(settings: dict) -> None:
-    st.markdown(
-        "**Ask anything about Berlin raves.** The agent fetches live events straight "
-        "from Resident Advisor: what's on this Friday, what fits your taste, what's "
-        "playing at Tresor this weekend. Every event name links to its RA page, and "
-        "rating picks teaches the agent what you like."
+    st.info("Find and compare real Berlin rave events. Ask what's on, name a venue, or describe your taste. Rate picks to improve future suggestions.", icon="📍")
+    st.caption(
+        "The agent fetches live events from Resident Advisor, ranks them against your taste, "
+        "and links every card to its RA page. Rating a pick updates your profile for next time."
     )
     st.divider()
     _render_digest_section()
@@ -602,12 +636,10 @@ def _tab_weekend(settings: dict) -> None:
 
 
 def _tab_learn(settings: dict) -> None:
-    st.markdown(
-        "**Everything about raves, electronic music, and Berlin's scene, in one place.** "
-        "Genres and subgenres, BPM signatures, harmonic analysis, scene history, record "
-        "labels, rave etiquette, and harm reduction, grounded in the curated knowledge "
-        "base. When something falls outside the knowledge base, the agent can search the "
-        "web and tells you when an answer came from there."
+    st.info("Ask about genres, labels, scene history, rave culture, or harm reduction. This is the knowledge tab, not for finding events.", icon="📖")
+    st.caption(
+        "Answers are grounded in the curated knowledge base. When something falls outside "
+        "it, the agent searches the web and tells you so."
     )
     st.divider()
     _render_chat("learn", "Ask anything about electronic music, Berlin's scene, or rave culture.")
@@ -616,22 +648,15 @@ def _tab_learn(settings: dict) -> None:
 
 
 def _tab_mix_builder(settings: dict) -> None:
-    st.markdown(
-        "**Build a rave set from a brief.** Describe a slot, the time of night, the "
-        "venue vibe, a BPM target, the energy you want, and get a full 1-hour set back: "
-        "16 tracks with a deliberate arc from warm-up to peak to comedown. Each track "
-        "comes with a 30-second preview and a YouTube link to the full song."
-    )
+    st.info("Describe a slot or mood and get a full 1-hour set with a warm-up to peak arc, 30-second previews, and YouTube links.", icon="🎛️")
     st.caption(
-        "The arc is the point. Not just a list of tracks, but a journey: warm-up, "
-        "build, peak, and a way down. Be specific. 'Hypnotic 130 BPM 2am Berghain' "
-        "beats 'techno'. Try a set to walk into a party with, or one to come down to "
-        "after."
+        "Be specific for best results. 'Hypnotic 130 BPM 2am Berghain' beats 'techno'. "
+        "Try a walk-in set, a peak-time set, or a Sunday comedown."
     )
     st.divider()
     sets = st.session_state["mix_sets"]
     if not sets:
-        st.info("Describe a slot or a mood below and Rave Atlas builds you a playable 1-hour set.")
+        st.info("Describe a slot or a mood below and Berlin Rave Atlas builds you a playable 1-hour set.")
     for entry in sets:
         with st.chat_message("user"):
             st.markdown(entry["seed"])
@@ -653,17 +678,10 @@ def _tab_mix_builder(settings: dict) -> None:
 
 
 def _tab_beyond_berlin(settings: dict) -> None:
-    st.markdown(
-        "**Live Resident Advisor listings from 100 cities across Europe, including Berlin.** "
-        "Pick a region and a city, set your dates, optionally filter by genre or price, "
-        "and get real RA listings. 14 regions from the UK and Scandinavia to the Balkans, "
-        "Turkey, and as far east as Tbilisi and Kyiv."
-    )
+    st.info("Browse live Resident Advisor listings for any European city. Pick a region, a city, and a date range. No chat, just events.", icon="🌍")
     st.caption(
-        "Coverage is best for major scenes: Berlin, Amsterdam, Paris, Barcelona, Belgrade, "
-        "Vienna, Zurich, Copenhagen. Smaller cities may return few or no results. "
-        "This is a direct browse, not a chat. For Berlin planning and recommendations, "
-        "use the Raves in Berlin tab."
+        "Best coverage: Amsterdam, Paris, Barcelona, Belgrade, Vienna, Zurich, Copenhagen. "
+        "Smaller cities may return few results. For Berlin recommendations and agent chat, use Raves in Berlin."
     )
     st.divider()
 
@@ -679,13 +697,13 @@ def _tab_beyond_berlin(settings: dict) -> None:
     )
     region_cities = config.CITY_REGIONS.get(region) or []
     city_list = region_cities if region_cities else config.AVAILABLE_CITIES
-    city = col_city.selectbox("City", city_list, index=0)
+    city = col_city.selectbox("City", city_list, index=None, placeholder="Select a city...")
 
     # ── Date range ────────────────────────────────────────────────────────────
     col_from, col_to = st.columns(2)
     today = date.today()
     date_from = col_from.date_input("From", value=today)
-    date_to   = col_to.date_input("To",   value=today + timedelta(days=3))
+    date_to = col_to.date_input("To", value=today + timedelta(days=3))
 
     # ── Optional filters ──────────────────────────────────────────────────────
     col_genre, col_price = st.columns([3, 2])
@@ -704,7 +722,9 @@ def _tab_beyond_berlin(settings: dict) -> None:
     max_price = col_price.slider("Max price (€, 0 = no limit)", 0, 80, 0, 5)
 
     if st.button("Find rave parties on RA", type="primary"):
-        if date_to < date_from:
+        if not city:
+            st.error("Pick a city first.")
+        elif date_to < date_from:
             st.error("'To' date must be on or after 'From' date.")
         else:
             filters: dict[str, Any] = {}
@@ -713,7 +733,7 @@ def _tab_beyond_berlin(settings: dict) -> None:
             if max_price > 0:
                 filters["max_price"] = float(max_price)
             from tools.events import find_events as _find
-            with st.spinner(f"Querying Resident Advisor for {city}…"):
+            with st.spinner(f"Querying Resident Advisor for {city}..."):
                 events = _find(
                     date_from.isoformat(),
                     date_to.isoformat(),
@@ -739,61 +759,26 @@ def _tab_beyond_berlin(settings: dict) -> None:
                 _render_event_card(evt)
 
 
-# ── Onboarding ────────────────────────────────────────────────────────────────
-
-def _render_intro() -> None:
-    no_activity = (
-        not st.session_state["messages_weekend"]
-        and not st.session_state["messages_learn"]
-        and not st.session_state["mix_sets"]
-    )
-    with st.expander("New here? How Rave Atlas works", expanded=no_activity):
-        st.markdown(
-            "**Rave Atlas is your guide to electronic music and raving, built Berlin-first.** "
-            "It's for three kinds of people: locals who want better-matched nights with less "
-            "research, newcomers and visitors who love the music but don't know the scene, and "
-            "anyone curious who just wants to learn. Berlin is where its knowledge runs deepest, "
-            "the venues, the labels, the history, but it reaches across Europe for events too.\n\n"
-            "A good first run: open **Raves in Berlin** and ask what's on this weekend. Rate the "
-            "picks you like so it learns your taste. Curious about a genre or a club? Ask the "
-            "**Rave Wiki**. Want music to take with you? Build a set in **Set Builder**. "
-            "Travelling? Browse **Rave Parties in Europe**.\n\n"
-            "What each tab does:\n"
-            "- **Raves in Berlin** ask anything about Berlin events. The agent fetches live "
-            "Resident Advisor listings, ranks them by your taste, and links every event to its "
-            "RA page. The weekend digest sits at the top.\n"
-            "- **Set Builder** describe a slot or a mood and get a playable 1-hour set: 16 tracks "
-            "with a warm-up to peak to comedown arc, 30-second previews, and YouTube links.\n"
-            "- **Rave Wiki** genres, BPM signatures, scene history, labels, track anatomy, rave "
-            "culture, and harm reduction, grounded in the knowledge base, with web search as backup.\n"
-            "- **Rave Parties in Europe** browse live RA listings for any European city, filtered "
-            "by region.\n\n"
-            "Set the tone in the sidebar: **concise** for just the facts, **elaborated** for full "
-            "context, or **expert** for insider depth with labels, BPMs, and scene history."
-        )
-
-
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main() -> None:
-    st.set_page_config(page_title="Rave Atlas", page_icon="🎛️", layout="wide",
+    st.set_page_config(page_title="Berlin Rave Atlas", page_icon="🎛️", layout="wide",
                        initial_sidebar_state="expanded")
     _inject_css()
     _ensure_kb_seeded()
     _init_session()
-    get_scheduler()  # local convenience; production automation runs via GitHub Actions
+    get_scheduler() # local convenience; production automation runs via GitHub Actions
 
     settings = _render_sidebar()
 
-    st.title("Rave Atlas")
+    st.title("Berlin Rave Atlas")
     st.caption(
-        "Your guide to Berlin's electronic music scene: find the right night, learn "
+        "Your guide to Berlin's electronic music scene. Find the right night, learn "
         "the music, build a set, and browse raves across Europe."
     )
-    _render_intro()
 
     tab_weekend, tab_mix, tab_learn, tab_beyond = st.tabs(
-        ["Raves in Berlin", "Set Builder", "Rave Wiki", "Rave Parties in Europe"]
+        ["Raves in Berlin", "Rave Set Builder", "Rave Culture & Music", "Beyond Berlin"]
     )
     with tab_weekend:
         _tab_weekend(settings)
