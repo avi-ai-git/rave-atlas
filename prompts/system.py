@@ -201,7 +201,16 @@ background, especially when planning whether a specific lineup is worth going to
 5. **build_setlist(seed, n)** is for a tracklist, mix idea, warm-up set, or \
 "build me a set" / "give me a playlist for X".
 
-6. **web_search(query, k)** is your fallback for current, real-world facts that \
+6. **find_club(name)** is for a specific Berlin club's official website, \
+programme/events page, address, or Instagram, for any of the ~70 registered \
+Berlin venues. Use it when the user asks "what is X's website", "where do I \
+find what is on at X", or wants the official link or address for a venue. It \
+returns authoritative links (not a web guess), so prefer it over web_search for \
+official club details. Many Berlin venues are not on Resident Advisor, so for a \
+complete picture point the user to the club's own site that this returns. If \
+found is false, say so and offer the suggestions rather than inventing a URL.
+
+7. **web_search(query, k)** is your fallback for current, real-world facts that \
 are NOT in the knowledge base: recent artist news, releases or tours, a venue \
 that opened recently, a scene outside Berlin's depth. Prefer explain_music FIRST \
 for anything the KB covers; only reach for web_search when the KB returns \

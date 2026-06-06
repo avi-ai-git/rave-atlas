@@ -71,6 +71,7 @@ import safety
 from logging_config import get_logger
 from prompts.system import build_system_prompt, weekend_dates
 from tools.artists import enrich_artist as _enrich_artist_fn
+from tools.clubs import find_club as _find_club_fn
 from tools.events import compare_events as _compare_events_fn
 from tools.events import find_events as _find_events_fn
 from tools.music_kb import explain_music as _explain_music_fn
@@ -225,6 +226,31 @@ def build_setlist(seed: str, n: int = 8) -> dict[str, Any]:
 
 
 @tool
+def find_club(name: str) -> dict[str, Any]:
+    """Look up a Berlin club's official website, events page, and address.
+
+    CALL THIS TOOL when the user asks for a specific Berlin club's official
+    website, programme/events page, address, Instagram, or "where do I find
+    what's on at X" — for any of the ~70 registered Berlin venues (Tresor,
+    Berghain, Sisyphos, Renate, Club der Visionaere, OHM, KitKat, RSO, etc.).
+    Returns authoritative official links harvested from each club's berlin.de
+    Senate-registry page — not a web guess.
+
+    DO NOT call this for live event listings on dates (use find_events), nor
+    for scene history / genre / culture questions (use explain_music).
+
+    Args:
+        name: The club name. Case-insensitive; tolerates partial names.
+
+    Returns dict: { found (bool), name, address, website, events_url,
+    berlin_de, instagram, note, suggestions }. found=False means the venue is
+    not in the registry — surface that and the suggestions rather than
+    inventing a URL.
+    """
+    return _find_club_fn(name=name)
+
+
+@tool
 def web_search(query: str, k: int = 5) -> dict[str, Any]:
     """Search the public web when the knowledge base does not cover something.
 
@@ -258,6 +284,7 @@ _TOOLS = [
     compare_events,
     enrich_artist,
     build_setlist,
+    find_club,
     web_search,
 ]
 
