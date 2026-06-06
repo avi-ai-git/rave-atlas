@@ -489,6 +489,10 @@ def find_events(
         logger.info("find_events_no_area", city=city, date_from=date_from, date_to=date_to)
         return []
 
+    # Fetch more when a venue filter is set: venue filtering is client-side, so
+    # a small pageSize means a venue at position 26+ is silently missing.
+    page_size = 100 if filters.get("venue") else 50
+
     payload = {
         "query": _RA_EVENTS_QUERY,
         "variables": {
@@ -497,7 +501,7 @@ def find_events(
                 "listingDate": {"gte": date_from, "lte": date_to},
                 "eventType": {"eq": 1},
             },
-            "pageSize": 25,
+            "pageSize": page_size,
             "page": 1,
         },
     }

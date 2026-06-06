@@ -463,7 +463,7 @@ def _render_events_block(tool_calls: list[dict], msg_idx: int) -> None:
             evt,
             rank=r.get("rank") if r else None,
             fit=(r.get("fit_summary", "") if r else ""),
-            rating_ctx=(session_id, msg_idx) if ranked_list else None,
+            rating_ctx=(session_id, msg_idx),
         )
 
 
