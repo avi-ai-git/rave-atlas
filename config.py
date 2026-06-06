@@ -294,6 +294,11 @@ MISTRAL_API_KEY: str = os.environ.get("MISTRAL_API_KEY", "")
 # Optional. When set, web_search uses Brave Search (SLA, 2 k free/month) instead
 # of the keyless DuckDuckGo fallback. Get a key at search.brave.com/api.
 BRAVE_SEARCH_API_KEY: str = os.environ.get("BRAVE_SEARCH_API_KEY", "")
+# Optional. When set, the set builder fetches a real YouTube video ID per track
+# so previews are embedded inline instead of opening a search results page.
+# Get a key at console.cloud.google.com -> YouTube Data API v3 (free: 10k units/day;
+# one search = 100 units, so a 16-track set costs 1600 units).
+YOUTUBE_API_KEY: str = os.environ.get("YOUTUBE_API_KEY", "")
 # Mistral's OpenAI-compatible endpoint. The same MISTRAL_API_KEY powers both the
 # safety moderation call (safety.py) and Mistral Large as a selectable chat model.
 MISTRAL_BASE_URL: str = os.environ.get(

@@ -517,22 +517,32 @@ def _render_setlist(sl: dict) -> None:
             links = []
             if t.get("deezer_url"):
                 links.append(f"[Deezer ↗]({t['deezer_url']})")
-            if t.get("youtube_url"):
+            if t.get("youtube_url") and not t.get("youtube_embed_url"):
                 links.append(f"[YouTube ↗]({t['youtube_url']})")
             if links:
                 st.caption(" · ".join(links))
 
             if t.get("preview_url"):
-                # Label clearly: is this the exact track or an artist fallback?
                 if t.get("deezer_fallback"):
                     st.caption(
                         f"30-second preview of a similar track by "
-                        f"**{t.get('artist', '')}** (exact title not found, "
-                        f"use the YouTube link above for the real track)"
+                        f"**{t.get('artist', '')}** (exact title not on Deezer)"
                     )
                 else:
-                    st.caption("30-second preview (full track on the links above)")
+                    st.caption("30-second preview")
                 st.audio(t["preview_url"], format="audio/mp3")
+
+            if t.get("youtube_embed_url"):
+                import streamlit.components.v1 as components
+                components.html(
+                    f'<iframe width="100%" height="200" '
+                    f'src="{t["youtube_embed_url"]}?rel=0" '
+                    f'frameborder="0" '
+                    f'allow="accelerometer; autoplay; clipboard-write; '
+                    f'encrypted-media; gyroscope; picture-in-picture" '
+                    f'allowfullscreen style="border-radius:6px"></iframe>',
+                    height=208,
+                )
 
 
 # ── Chat message renderer (Weekend / Learn) ───────────────────────────────────

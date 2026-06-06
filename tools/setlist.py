@@ -31,6 +31,7 @@ from typing import Any
 
 import requests
 
+import config
 import llm_client
 import textfmt
 from logging_config import get_logger
@@ -39,14 +40,16 @@ from prompts.setlist import build_setlist_prompt
 logger = get_logger(__name__)
 
 _DEEZER_BASE = "https://api.deezer.com"
+_YOUTUBE_SEARCH_API = "https://www.googleapis.com/youtube/v3/search"
 _HTTP_TIMEOUT = 8
 
 # Deezer public limit is 50 req / 5 sec. An 8-track set is 8-16 calls,
 # well under, but a tiny inter-call pause keeps us safe under bursts.
 _DEEZER_PAUSE_SECONDS = 0.05
 
-# In-memory cache: normalised search query → Deezer result dict (or None)
-_DEEZER_CACHE: dict[str, dict[str, Any] | None] = {}
+# In-memory caches keyed by normalised query string.
+_DEEZER_CACHE: dict[str, list[dict[str, Any]] | None] = {}
+_YOUTUBE_CACHE: dict[str, str | None] = {}  # query -> video_id
 
 _EMPTY_SETLIST: dict[str, Any] = {
     "title": "Set unavailable",
@@ -61,6 +64,42 @@ def _youtube_search_url(artist: str, title: str) -> str:
     """Build a YouTube search URL for an artist+title pair."""
     query = f"{artist} {title}".strip()
     return f"https://www.youtube.com/results?search_query={urllib.parse.quote_plus(query)}"
+
+
+def _youtube_video_id(artist: str, title: str) -> str | None:
+    """
+    Fetch the top YouTube video ID for an artist+title pair via the Data API v3.
+    Returns None when YOUTUBE_API_KEY is not set, the quota is exhausted, or no
+    hit is found. Results are cached in-memory for the session.
+    """
+    if not config.YOUTUBE_API_KEY:
+        return None
+
+    query = f"{artist} {title}".strip()
+    if query in _YOUTUBE_CACHE:
+        return _YOUTUBE_CACHE[query]
+
+    try:
+        resp = requests.get(
+            _YOUTUBE_SEARCH_API,
+            params={
+                "part": "id",
+                "q": query,
+                "type": "video",
+                "maxResults": 1,
+                "key": config.YOUTUBE_API_KEY,
+            },
+            timeout=_HTTP_TIMEOUT,
+        )
+        resp.raise_for_status()
+        items = resp.json().get("items") or []
+        video_id: str | None = items[0]["id"]["videoId"] if items else None
+    except Exception as exc:
+        logger.warning("youtube_api_failed", query=query[:80], error=str(exc)[:160])
+        video_id = None
+
+    _YOUTUBE_CACHE[query] = video_id
+    return video_id
 
 
 # Titles too generic to search: Deezer will return any track, usually wrong.
@@ -276,6 +315,7 @@ def build_setlist(seed: str, n: int = 8) -> dict[str, Any]:
             continue # skip malformed tracks rather than emit garbage
 
         media = _enrich_track_with_deezer(artist, track_title)
+        video_id = _youtube_video_id(artist, track_title)
 
         enriched_tracks.append({
             "artist": artist,
@@ -286,6 +326,9 @@ def build_setlist(seed: str, n: int = 8) -> dict[str, Any]:
             "deezer_url": media["deezer_url"],
             "deezer_fallback": bool(media.get("deezer_fallback")),
             "youtube_url": _youtube_search_url(artist, track_title),
+            "youtube_embed_url": (
+                f"https://www.youtube.com/embed/{video_id}" if video_id else None
+            ),
         })
         energy_arc.append(energy)
 
