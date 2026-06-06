@@ -32,6 +32,7 @@ stays runnable for contributors who haven't set Telegram up.
 from __future__ import annotations
 
 import html
+import sqlite3
 import sys
 from datetime import date, timedelta
 
@@ -51,12 +52,80 @@ _TELEGRAM_MAX_CHARS = 4096
 
 # ── Date window ────────────────────────────────────────────────────────────────
 
-def _weekend_window(today: date | None = None) -> tuple[date, date]:
-    """Return (friday, tuesday) for the current/next weekend. Fri → Tue = 4 days."""
+def _digest_window(today: date | None = None) -> tuple[date, date, str]:
+    """
+    Return (date_from, date_to, label) based on the actual day of the week.
+
+    This makes the digest useful whenever it is triggered, not just on Fridays:
+
+    - Mon/Tue/Wed: today through Sunday — "what is still on this week"
+    - Thu: tomorrow (Fri) through Tuesday — "plan ahead for the weekend"
+    - Fri/Sat/Sun: the Friday that opened this weekend through Tuesday —
+      "it is happening right now / still going"
+
+    The old _weekend_window() always looked for the NEXT Friday, so firing on
+    Saturday showed next weekend instead of the current one. This fixes that.
+    """
     today = today or date.today()
-    days_ahead = (4 - today.weekday()) % 7  # 4 = Friday
-    friday = today if days_ahead == 0 else today + timedelta(days=days_ahead)
-    return friday, friday + timedelta(days=4)
+    wd = today.weekday()  # Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6
+
+    if wd <= 2:  # Mon, Tue, Wed
+        date_from = today
+        date_to = today + timedelta(days=6 - wd)  # through Sunday
+        label = f"this week ({date_from.strftime('%d %b')} to {date_to.strftime('%d %b %Y')})"
+    elif wd == 3:  # Thu
+        date_from = today + timedelta(days=1)   # Friday
+        date_to = date_from + timedelta(days=4)  # Tuesday
+        label = f"this weekend ({date_from.strftime('%d %b')} to {date_to.strftime('%d %b %Y')})"
+    else:  # Fri=4, Sat=5, Sun=6
+        date_from = today - timedelta(days=wd - 4)  # anchor to this Friday
+        date_to = date_from + timedelta(days=4)      # through Tuesday
+        label = f"this weekend ({date_from.strftime('%d %b')} to {date_to.strftime('%d %b %Y')})"
+
+    return date_from, date_to, label
+
+
+# ── Scraped events (official club websites) ────────────────────────────────────
+
+def _load_scraped_events(date_from: str, date_to: str) -> list[dict]:
+    """
+    Load events scraped from official club websites (club_events SQLite table).
+
+    These come from automation/club_scraper.py — venues not on Resident Advisor
+    like Renate, Heideglühen, Fitzroy, and any club whose events_url was scraped.
+    Returns an empty list if the table doesn't exist yet (scraper hasn't run).
+
+    The returned dicts use the same shape as RA events so format_digest_html
+    can handle both uniformly. source="official" distinguishes them from RA.
+    """
+    try:
+        conn = sqlite3.connect(config.SQLITE_PATH, check_same_thread=False)
+        rows = conn.execute(
+            """
+            SELECT club, website, date, name, lineup, info
+            FROM club_events
+            WHERE (date = '' OR (date >= ? AND date <= ?))
+            ORDER BY date, club
+            """,
+            (date_from, date_to),
+        ).fetchall()
+        conn.close()
+        return [
+            {
+                "name": r[3],
+                "venue": r[0],
+                "url": r[1] or "",   # official website link, not RA
+                "start_time": r[2],
+                "lineup": r[4] or "",
+                "price": r[5] or "",
+                "source": "official",
+            }
+            for r in rows
+            if r[3]  # skip empty names
+        ]
+    except Exception as exc:
+        logger.warning("scraped_events_load_failed", error=str(exc)[:120])
+        return []
 
 
 # ── Message formatting (pure, testable) ────────────────────────────────────────
@@ -66,39 +135,67 @@ def _esc(text: str) -> str:
     return html.escape(text or "", quote=False)
 
 
-def format_digest_html(events: list[dict], date_from: str, date_to: str) -> str:
+def format_digest_html(
+    ra_events: list[dict],
+    scraped_events: list[dict],
+    date_from: str,
+    date_to: str,
+    label: str = "",
+) -> str:
     """
     Build the Telegram message body (HTML parse mode).
 
-    One line per event: a linked title (→ RA page), then venue · time · price.
-    Pure function — no network — so it can be unit-tested without Telegram.
+    Merges RA events and scraped official-site events. RA events come first
+    (live data, ticket links). Scraped events follow under a second heading
+    when present (venues not on RA). Both sections link to their source.
     """
-    header = f"🎛️ <b>Berlin this weekend</b>  ({_esc(date_from)} → {_esc(date_to)})"
-
-    if not events:
-        return (
-            f"{header}\n\n"
-            "No Resident Advisor listings came back for this window. "
-            'Check <a href="https://ra.co/events/de/berlin">ra.co/berlin</a> directly.'
-        )
+    header_label = label or f"{date_from} to {date_to}"
+    header = f"🎛️ <b>Berlin {header_label}</b>"
 
     lines = [header, ""]
-    for evt in events[:_MAX_EVENTS]:
-        name = _esc(evt.get("name") or "Untitled event")
-        url = evt.get("url") or ""
-        venue = _esc(evt.get("venue") or "")
-        when = _esc(evt.get("start_time") or evt.get("date") or "")
-        price = _esc(evt.get("price") or "")
 
-        title = f'<a href="{html.escape(url, quote=True)}">{name}</a>' if url else f"<b>{name}</b>"
-        meta_bits = [b for b in (venue, when, price) if b]
-        meta = "  ·  ".join(meta_bits)
-        lines.append(f"• {title}")
-        if meta:
-            lines.append(f"  <i>{meta}</i>")
+    if not ra_events and not scraped_events:
+        lines.append(
+            "No listings found for this window. "
+            'Check <a href="https://ra.co/events/de/berlin">ra.co/berlin</a> directly.'
+        )
+        return "\n".join(lines)
+
+    # ── RA events ──
+    if ra_events:
+        lines.append("<b>On Resident Advisor</b>")
+        for evt in ra_events[:_MAX_EVENTS]:
+            name = _esc(evt.get("name") or "Untitled event")
+            url = evt.get("url") or ""
+            venue = _esc(evt.get("venue") or "")
+            when = _esc(evt.get("start_time") or evt.get("date") or "")
+            price = _esc(evt.get("price") or "")
+            title = f'<a href="{html.escape(url, quote=True)}">{name}</a>' if url else f"<b>{name}</b>"
+            meta_bits = [b for b in (venue, when, price) if b]
+            lines.append(f"• {title}")
+            if meta_bits:
+                lines.append(f"  <i>{'  ·  '.join(meta_bits)}</i>")
+
+    # ── Official site events (not on RA) ──
+    if scraped_events:
+        lines.append("")
+        lines.append("<b>Not on RA — official sites</b>")
+        for evt in scraped_events[:8]:
+            name = _esc(evt.get("name") or "Untitled event")
+            url = evt.get("url") or ""
+            venue = _esc(evt.get("venue") or "")
+            when = _esc(evt.get("start_time") or "")
+            lineup = _esc((evt.get("lineup") or "")[:80])
+            title = f'<a href="{html.escape(url, quote=True)}">{name}</a>' if url else f"<b>{name}</b>"
+            meta_bits = [b for b in (venue, when) if b]
+            lines.append(f"• {title}")
+            if meta_bits:
+                lines.append(f"  <i>{'  ·  '.join(meta_bits)}</i>")
+            if lineup:
+                lines.append(f"  <i>{lineup}</i>")
 
     lines.append("")
-    lines.append('🎟 Tap any title for details &amp; tickets on Resident Advisor.')
+    lines.append('🎟 Tap titles for details. RA links go to tickets; others to the club site.')
 
     msg = "\n".join(lines)
     if len(msg) > _TELEGRAM_MAX_CHARS:
@@ -144,21 +241,49 @@ def send_telegram_message(text: str) -> bool:
 # ── Orchestration ────────────────────────────────────────────────────────────────
 
 def run() -> bool:
-    """Fetch Berlin weekend events, format, and send to Telegram. Returns success."""
-    friday, tuesday = _weekend_window()
-    date_from, date_to = friday.isoformat(), tuesday.isoformat()
+    """
+    Fetch Berlin events from all sources, format, and send to Telegram.
 
-    logger.info("telegram_digest_start", date_from=date_from, date_to=date_to)
+    Sources:
+    1. Resident Advisor (GraphQL, live) — always attempted.
+    2. Official club websites (SQLite club_events table) — included when the
+       club scraper has been run in the same job or previously. Empty list if
+       the table doesn't exist yet.
+
+    Date window adapts to today's weekday so manual triggers are always
+    relevant, not stuck pointing at the next Friday.
+    """
+    d_from, d_to, label = _digest_window()
+    date_from, date_to = d_from.isoformat(), d_to.isoformat()
+
+    logger.info(
+        "telegram_digest_start",
+        date_from=date_from,
+        date_to=date_to,
+        label=label,
+    )
 
     try:
-        events = find_events(date_from, date_to)  # Berlin (HOME_CITY default)
-    except Exception as exc:  # never let a fetch error crash the scheduled job
+        ra_events = find_events(date_from, date_to)
+    except Exception as exc:
         logger.warning("telegram_find_events_failed", error=str(exc))
-        events = []
+        ra_events = []
 
-    message = format_digest_html(events, date_from, date_to)
+    scraped_events = _load_scraped_events(date_from, date_to)
+    logger.info(
+        "telegram_sources",
+        ra=len(ra_events),
+        scraped=len(scraped_events),
+    )
+
+    message = format_digest_html(ra_events, scraped_events, date_from, date_to, label)
     ok = send_telegram_message(message)
-    logger.info("telegram_digest_done", n_events=len(events), sent=ok)
+    logger.info(
+        "telegram_digest_done",
+        n_ra=len(ra_events),
+        n_scraped=len(scraped_events),
+        sent=ok,
+    )
     return ok
 
 
