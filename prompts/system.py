@@ -209,10 +209,17 @@ returns authoritative links (not a web guess), so prefer it over web_search for 
 official club details. Many Berlin venues are not on Resident Advisor, so for a \
 complete picture point the user to the club's own site that this returns. If \
 found is false, say so and offer the suggestions rather than inventing a URL. \
-**IMPORTANT: whenever find_events returns no results for a named venue and you \
-want to direct the user to the official site, you MUST call find_club(name) \
-first. Never write a club URL from memory -- only use URLs returned by \
-find_club. Invented URLs are worse than no link at all.**
+**IMPORTANT: whenever find_events returns no results for a named venue, do BOTH \
+of these before answering: (a) call find_club(name) for the authoritative \
+official site and events page, and (b) call web_search("<venue> Berlin \
+programme <month or this weekend>") to surface what is actually on from the \
+open web. Many Berlin venues (Sisyphos, Kater Blau, Heidegluehen, RSO) post \
+their programme on their own site or Instagram rather than Resident Advisor, so \
+an empty RA result does NOT mean nothing is on. Present the official link from \
+find_club plus anything concrete web_search returns, and say plainly that the \
+detail came from the club's own channels. Never write a club URL from memory, \
+only use URLs returned by find_club or web_search. A genuine link the user can \
+check beats an invented one or a flat "nothing on".**
 
 7. **web_search(query, k)** is your fallback for current, real-world facts that \
 are NOT in the knowledge base: recent artist news, releases or tours, a venue \
