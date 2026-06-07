@@ -7,7 +7,7 @@ Strategy:
     invocation, so most tests use side_effect=[pass1_resp, pass2_resp].
   - Mock requests.get for Deezer (hit and miss paths).
   - Verify output shape, energy clamping, malformed-track skipping,
-    markdown-fence tolerance, Camelot compatibility, and fallback on LLM failure.
+    markdown-fence tolerance, and fallback on LLM failure.
 """
 from __future__ import annotations
 
@@ -87,34 +87,6 @@ def _deezer_miss() -> Mock:
     return resp
 
 
-# ── TestCamelotCompat ─────────────────────────────────────────────────────────
-
-class TestCamelotCompat:
-    def test_same_position_is_perfect(self):
-        assert setlist_mod.camelot_compat("8A", "8A") == "perfect"
-
-    def test_same_number_different_letter_is_compatible(self):
-        assert setlist_mod.camelot_compat("8A", "8B") == "compatible"
-
-    def test_adjacent_same_letter_is_compatible(self):
-        assert setlist_mod.camelot_compat("8A", "9A") == "compatible"
-        assert setlist_mod.camelot_compat("8A", "7A") == "compatible"
-
-    def test_wrap_around_is_compatible(self):
-        # 12 and 1 are adjacent on the wheel
-        assert setlist_mod.camelot_compat("12A", "1A") == "compatible"
-        assert setlist_mod.camelot_compat("1B", "12B") == "compatible"
-
-    def test_distant_keys_clash(self):
-        assert setlist_mod.camelot_compat("8A", "3B") == "clash"
-        assert setlist_mod.camelot_compat("1A", "6B") == "clash"
-
-    def test_none_input_is_unknown(self):
-        assert setlist_mod.camelot_compat(None, "8A") == "unknown"
-        assert setlist_mod.camelot_compat("8A", None) == "unknown"
-        assert setlist_mod.camelot_compat(None, None) == "unknown"
-
-
 # ── TestBuildSetlist ──────────────────────────────────────────────────────────
 
 class TestBuildSetlist:
@@ -148,7 +120,6 @@ class TestBuildSetlist:
         required = (
             "artist", "title", "reason", "energy",
             "preview_url", "deezer_url", "youtube_url",
-            "bpm", "camelot", "key_name",
         )
         for t in result["tracks"]:
             for key in required:
@@ -269,17 +240,6 @@ class TestBuildSetlist:
         mocker.patch("requests.get", return_value=_deezer_hit())
         result = setlist_mod.build_setlist("techno", n=2)
         assert any(t["deezer_url"] is not None for t in result["tracks"])
-
-    def test_spotify_fields_none_without_credentials(self, mocker):
-        """With no Spotify credentials set, BPM/Camelot fields must be None."""
-        mocker.patch("llm_client.chat", side_effect=_both())
-        mocker.patch("requests.get", return_value=_deezer_miss())
-        mocker.patch("config.SPOTIFY_CLIENT_ID", "")
-        mocker.patch("config.SPOTIFY_CLIENT_SECRET", "")
-        result = setlist_mod.build_setlist("techno", n=2)
-        for t in result["tracks"]:
-            assert t["bpm"] is None
-            assert t["camelot"] is None
 
     def test_deezer_fallback_sets_llm_title(self, mocker):
         """When Deezer returns a fallback artist track, llm_title is preserved."""

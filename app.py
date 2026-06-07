@@ -3,10 +3,10 @@ Berlin Rave Atlas, Streamlit UI.
 
 Four tabs, a Berlin-first agent, and one deliberate non-agent browser.
 
-  Raves in Berlin        Berlin event discovery, compare, ratings (ReAct agent)
+  Plan Your Night        Berlin event discovery, compare, ratings (ReAct agent)
   Rave Set Builder       1-hour set builder (direct, deterministic tool call)
-  Rave Wiki              KB chat grounded in the knowledge base (ReAct agent, RAG)
-  Beyond Berlin          browse all European Resident Advisor cities (plain API browse)
+  Learn the Scene        KB chat grounded in the knowledge base (ReAct agent, RAG)
+  Raves Beyond Berlin    browse all European Resident Advisor cities (plain API browse)
 
 Why the split. The agent earns its cost where runtime reasoning matters
 (planning a Berlin night across several tools). Rave Set Builder is a single
@@ -54,26 +54,6 @@ import memory
 from agent import run_agent
 from automation.weekend_digest import generate_digest, get_scheduler
 from tools.setlist import build_setlist
-try:
-    from tools.setlist import camelot_compat
-except ImportError:
-    # Fallback if Streamlit Cloud serves a cached build without this function.
-    def camelot_compat(a, b):  # type: ignore[misc]
-        if not a or not b:
-            return "unknown"
-        try:
-            num_a, letter_a = int(a[:-1]), a[-1].upper()
-            num_b, letter_b = int(b[:-1]), b[-1].upper()
-        except (ValueError, IndexError):
-            return "unknown"
-        if num_a == num_b and letter_a == letter_b:
-            return "perfect"
-        if num_a == num_b:
-            return "compatible"
-        diff = min(abs(num_a - num_b), 12 - abs(num_a - num_b))
-        if diff == 1 and letter_a == letter_b:
-            return "compatible"
-        return "clash"
 
 
 # ── Theme polish (CSS) ────────────────────────────────────────────────────────
@@ -286,7 +266,7 @@ def _render_sidebar() -> dict[str, Any]:
                 "- **Learn the Scene** answers anything about genres, labels, scene "
                 "history, rave etiquette, and harm reduction from the curated knowledge "
                 "base. It falls back to web search when needed.\n"
-                "- **Beyond Berlin** browses live RA listings for any European city.\n\n"
+                "- **Raves Beyond Berlin** browses live RA listings for any European city.\n\n"
                 "Set **Tone** above to control depth. Concise for quick answers, "
                 "Detailed for full context, Expert for label lineage and BPMs."
             )
@@ -492,9 +472,6 @@ def _render_setlist(sl: dict) -> None:
             f"({len(tracks)} tracks, ~{len(tracks) * 4} min)"
         )
 
-    # Check whether any track has Spotify data so we know which columns to show.
-    has_bpm = any(t.get("bpm") for t in tracks)
-
     # ── Summary table ─────────────────────────────────────────────────────────
     with st.expander("Track list at a glance", expanded=True):
         rows = []
@@ -502,20 +479,12 @@ def _render_setlist(sl: dict) -> None:
             energy = t.get("energy", 5)
             show_artist = t.get("llm_artist") or t.get("artist", "")
             show_title = t.get("llm_title") or t.get("title", "")
-            row = (
+            rows.append(
                 f"| **{i}** | {show_artist} | *{show_title}* | {_energy_bar(energy)} |"
             )
-            if has_bpm:
-                bpm_cell = str(t["bpm"]) if t.get("bpm") else ""
-                key_cell = t.get("camelot") or ""
-                row += f" {bpm_cell} | {key_cell} |"
-            rows.append(row)
 
         header = "| # | Artist | Track | Energy |"
         sep    = "|---|--------|-------|--------|"
-        if has_bpm:
-            header += " BPM | Key |"
-            sep    += "-----|-----|"
         st.markdown(header + "\n" + sep + "\n" + "\n".join(rows), unsafe_allow_html=False)
 
     # ── Playable track cards ──────────────────────────────────────────────────
@@ -540,18 +509,6 @@ def _render_setlist(sl: dict) -> None:
             if t.get("reason"):
                 st.caption(t["reason"])
 
-            # BPM + Camelot line (only shown when Spotify data is present)
-            meta_parts: list[str] = []
-            if t.get("bpm"):
-                meta_parts.append(f"{t['bpm']} BPM")
-            if t.get("camelot"):
-                key_label = t.get("key_name") or ""
-                meta_parts.append(
-                    t["camelot"] + (f" ({key_label})" if key_label else "")
-                )
-            if meta_parts:
-                st.caption(" · ".join(meta_parts))
-
             links: list[str] = []
             if t.get("deezer_url"):
                 links.append(f"[Deezer ↗]({t['deezer_url']})")
@@ -573,21 +530,6 @@ def _render_setlist(sl: dict) -> None:
             elif is_fallback and not t.get("preview_url"):
                 st.caption("No Deezer preview available — use the YouTube link above.")
 
-        # ── Transition indicator between adjacent tracks ───────────────────────
-        # Only shown when both tracks have Camelot data from Spotify.
-        if i < len(tracks):
-            next_t = tracks[i]   # tracks is 0-indexed; tracks[i] is the i+1-th entry
-            this_cam = t.get("camelot")
-            next_cam = next_t.get("camelot")
-            if this_cam and next_cam:
-                compat = camelot_compat(this_cam, next_cam)
-                if compat == "perfect":
-                    badge = "🟢 Same key"
-                elif compat == "compatible":
-                    badge = "🟡 Compatible"
-                else:
-                    badge = "🔴 Key clash"
-                st.caption(f"&nbsp;&nbsp;&nbsp;↕ {this_cam} → {next_cam} · {badge}")
 
 
 # ── Chat message renderer (Weekend / Learn) ───────────────────────────────────

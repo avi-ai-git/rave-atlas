@@ -23,18 +23,12 @@ Two-pass architecture:
     Deezer track page link. The matched artist and title are used as the
     canonical display values so what you see always matches what plays.
 
-  Spotify audio features (optional, graceful degradation)
-    When SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET are set, each track is
-    looked up via the Spotify Audio Features endpoint. This returns real BPM,
-    musical key, and Camelot wheel position. Without credentials the fields
-    are None and the UI omits the row.
-
   YouTube link
     Always present. A direct video link when YOUTUBE_API_KEY is set and
     confirms a video ID; otherwise a YouTube search URL.
 
 Failure model: the tool never raises. LLM failure at either pass returns the
-empty shape. Per-track Spotify or Deezer failure leaves those fields None on
+empty shape. Per-track Deezer failure leaves preview and URL fields None on
 that track only; the rest of the set remains usable.
 """
 
@@ -58,9 +52,6 @@ from prompts.setlist import build_artists_prompt, build_tracks_prompt
 logger = get_logger(__name__)
 
 _DEEZER_BASE = "https://api.deezer.com"
-_SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
-_SPOTIFY_SEARCH_URL = "https://api.spotify.com/v1/search"
-_SPOTIFY_FEATURES_URL = "https://api.spotify.com/v1/audio-features"
 _YOUTUBE_SEARCH_API = "https://www.googleapis.com/youtube/v3/search"
 _HTTP_TIMEOUT = 8
 
@@ -71,71 +62,12 @@ _DEEZER_PAUSE_SECONDS = 0.05
 # In-memory caches keyed by normalised query string.
 _DEEZER_CACHE: dict[str, list[dict[str, Any]] | None] = {}
 _YOUTUBE_CACHE: dict[str, str | None] = {}
-_SPOTIFY_FEATURES_CACHE: dict[str, dict | None] = {}
-_SPOTIFY_TOKEN_STATE: dict[str, Any] = {"token": None, "expires_at": 0.0}
 
 _EMPTY_SETLIST: dict[str, Any] = {
     "title": "Set unavailable",
     "tracks": [],
     "energy_arc": [],
 }
-
-
-# ── Camelot wheel ─────────────────────────────────────────────────────────────
-#
-# Maps (Spotify key 0-11, mode: 1=major 0=minor) to the Camelot position used
-# by DJs for harmonic mixing.  Numbers run 1-12 clockwise on the wheel; B is
-# major, A is minor.  Adjacent positions (same number, different letter = relative
-# major/minor; same letter, ±1 number = perfect fifth) are harmonically safe
-# transitions.
-
-_CAMELOT_WHEEL: dict[tuple[int, int], str] = {
-    (0, 1): "8B",  (1, 1): "3B",  (2, 1): "10B", (3, 1): "5B",
-    (4, 1): "12B", (5, 1): "7B",  (6, 1): "2B",  (7, 1): "9B",
-    (8, 1): "4B",  (9, 1): "11B", (10, 1): "6B", (11, 1): "1B",
-    (0, 0): "5A",  (1, 0): "12A", (2, 0): "7A",  (3, 0): "2A",
-    (4, 0): "9A",  (5, 0): "4A",  (6, 0): "11A", (7, 0): "6A",
-    (8, 0): "1A",  (9, 0): "8A",  (10, 0): "3A", (11, 0): "10A",
-}
-
-_KEY_NAMES: dict[tuple[int, int], str] = {
-    (0, 1): "C major",   (1, 1): "C# major",  (2, 1): "D major",
-    (3, 1): "Eb major",  (4, 1): "E major",   (5, 1): "F major",
-    (6, 1): "F# major",  (7, 1): "G major",   (8, 1): "Ab major",
-    (9, 1): "A major",   (10, 1): "Bb major", (11, 1): "B major",
-    (0, 0): "C minor",   (1, 0): "C# minor",  (2, 0): "D minor",
-    (3, 0): "Eb minor",  (4, 0): "E minor",   (5, 0): "F minor",
-    (6, 0): "F# minor",  (7, 0): "G minor",   (8, 0): "Ab minor",
-    (9, 0): "A minor",   (10, 0): "Bb minor", (11, 0): "B minor",
-}
-
-
-def camelot_compat(a: str | None, b: str | None) -> str:
-    """
-    Return 'perfect', 'compatible', or 'clash' for two Camelot positions.
-
-    Perfect  — same position (same key, unison mix).
-    Compatible — same number, different letter (relative major/minor), OR
-                 adjacent number, same letter (fifth up or down). Both are
-                 safe harmonic transitions in a real DJ set.
-    Clash    — everything else; the transition may produce audible dissonance.
-    Unknown  — either position is None or unparseable.
-    """
-    if not a or not b:
-        return "unknown"
-    try:
-        num_a, letter_a = int(a[:-1]), a[-1].upper()
-        num_b, letter_b = int(b[:-1]), b[-1].upper()
-    except (ValueError, IndexError):
-        return "unknown"
-    if num_a == num_b and letter_a == letter_b:
-        return "perfect"
-    if num_a == num_b:
-        return "compatible"  # relative major/minor
-    diff = min(abs(num_a - num_b), 12 - abs(num_a - num_b))
-    if diff == 1 and letter_a == letter_b:
-        return "compatible"  # adjacent on wheel (perfect fifth)
-    return "clash"
 
 
 # ── Text normalisation ────────────────────────────────────────────────────────
@@ -314,126 +246,6 @@ def _enrich_track_with_deezer(
     return dict(_NO_MATCH)
 
 
-# ── Spotify helpers ───────────────────────────────────────────────────────────
-
-def _spotify_token() -> str | None:
-    """
-    Return a valid Spotify client-credentials access token, refreshing when
-    the cached token is within 60 s of expiry. Returns None when credentials
-    are not configured or the token request fails.
-    """
-    if not (config.SPOTIFY_CLIENT_ID and config.SPOTIFY_CLIENT_SECRET):
-        return None
-    now = time.time()
-    cached = _SPOTIFY_TOKEN_STATE
-    if cached["token"] and now < cached["expires_at"] - 60:
-        return cached["token"]
-    try:
-        resp = requests.post(
-            _SPOTIFY_TOKEN_URL,
-            data={"grant_type": "client_credentials"},
-            auth=(config.SPOTIFY_CLIENT_ID, config.SPOTIFY_CLIENT_SECRET),
-            timeout=_HTTP_TIMEOUT,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        cached["token"] = data["access_token"]
-        cached["expires_at"] = now + data.get("expires_in", 3600)
-        return cached["token"]
-    except Exception as exc:
-        logger.warning("spotify_token_failed", error=str(exc)[:160])
-        return None
-
-
-def _spotify_features(artist: str, title: str) -> dict[str, Any] | None:
-    """
-    Return Spotify audio features for an artist+title pair, or None on any
-    failure (no credentials, track not found, API error).
-
-    Returned dict keys:
-      bpm         int | None   — rounded tempo in BPM
-      camelot     str | None   — Camelot wheel position e.g. "8A"
-      key_name    str | None   — human-readable key e.g. "A minor"
-      sp_energy   float | None — Spotify energy 0.0-1.0 (different scale from
-                                 the LLM's 1-10; shown separately in the UI)
-
-    Results are cached in-memory by normalised artist::title key.
-    """
-    token = _spotify_token()
-    if not token:
-        return None
-
-    cache_key = f"{_fold(artist)}::{_fold(title)}"
-    if cache_key in _SPOTIFY_FEATURES_CACHE:
-        return _SPOTIFY_FEATURES_CACHE[cache_key]
-
-    try:
-        # Step 1: search for the track
-        search_resp = requests.get(
-            _SPOTIFY_SEARCH_URL,
-            headers={"Authorization": f"Bearer {token}"},
-            params={
-                "q": f'artist:"{artist}" track:"{title}"',
-                "type": "track",
-                "limit": 5,
-                "market": "DE",
-            },
-            timeout=_HTTP_TIMEOUT,
-        )
-        search_resp.raise_for_status()
-        items = search_resp.json().get("tracks", {}).get("items") or []
-
-        # Find the first item whose artist actually matches
-        track_id: str | None = None
-        for item in items:
-            sp_artists = [a["name"] for a in (item.get("artists") or [])]
-            if any(_artist_matches(artist, a) for a in sp_artists):
-                track_id = item["id"]
-                break
-
-        if not track_id:
-            _SPOTIFY_FEATURES_CACHE[cache_key] = None
-            return None
-
-        # Step 2: fetch audio features
-        feat_resp = requests.get(
-            f"{_SPOTIFY_FEATURES_URL}/{track_id}",
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=_HTTP_TIMEOUT,
-        )
-        feat_resp.raise_for_status()
-        f = feat_resp.json()
-
-        raw_key = f.get("key", -1)
-        raw_mode = f.get("mode", -1)
-        if raw_key >= 0 and raw_mode >= 0:
-            camelot = _CAMELOT_WHEEL.get((raw_key, raw_mode))
-            key_name = _KEY_NAMES.get((raw_key, raw_mode))
-        else:
-            camelot = None
-            key_name = None
-
-        raw_tempo = f.get("tempo")
-        result: dict[str, Any] = {
-            "bpm": round(raw_tempo) if raw_tempo else None,
-            "camelot": camelot,
-            "key_name": key_name,
-            "sp_energy": round(f["energy"], 2) if f.get("energy") is not None else None,
-        }
-        _SPOTIFY_FEATURES_CACHE[cache_key] = result
-        return result
-
-    except Exception as exc:
-        logger.warning(
-            "spotify_features_failed",
-            artist=artist[:40],
-            title=title[:40],
-            error=str(exc)[:160],
-        )
-        _SPOTIFY_FEATURES_CACHE[cache_key] = None
-        return None
-
-
 # ── YouTube helpers ───────────────────────────────────────────────────────────
 
 def _youtube_search_url(artist: str, title: str) -> str:
@@ -575,10 +387,6 @@ def build_setlist(seed: str, n: int = 8) -> dict[str, Any]:
                     "deezer_fallback": bool,
                     "youtube_url":   str,
                     "youtube_verified": bool,
-                    "bpm":           int | None,   Spotify tempo
-                    "camelot":       str | None,   e.g. "8A"
-                    "key_name":      str | None,   e.g. "A minor"
-                    "sp_energy":     float | None, Spotify energy 0-1
                 },
                 ...
             ],
@@ -676,9 +484,6 @@ def build_setlist(seed: str, n: int = 8) -> dict[str, Any]:
         llm_artist = artist if is_fallback else None
         llm_title = track_title if is_fallback else None
 
-        # Spotify: BPM, key, Camelot (None when credentials absent).
-        spotify = _spotify_features(display_artist, display_title)
-
         # YouTube: direct link when API key is set, search URL otherwise.
         video_id = _youtube_video_id(display_artist, display_title)
         youtube_url = (
@@ -699,22 +504,15 @@ def build_setlist(seed: str, n: int = 8) -> dict[str, Any]:
             "deezer_fallback": is_fallback,
             "youtube_url":     youtube_url,
             "youtube_verified": bool(video_id),
-            # Spotify audio features — None when not available
-            "bpm":       spotify["bpm"]       if spotify else None,
-            "camelot":   spotify["camelot"]   if spotify else None,
-            "key_name":  spotify["key_name"]  if spotify else None,
-            "sp_energy": spotify["sp_energy"] if spotify else None,
         })
         energy_arc.append(energy)
 
     n_previews = sum(1 for t in enriched_tracks if t["preview_url"])
-    n_spotify = sum(1 for t in enriched_tracks if t.get("bpm"))
     logger.info(
         "build_setlist_ok",
         title=title[:80],
         n_tracks=len(enriched_tracks),
         n_previews=n_previews,
-        n_spotify=n_spotify,
         energy_arc=energy_arc,
     )
 
@@ -728,18 +526,6 @@ def build_setlist(seed: str, n: int = 8) -> dict[str, Any]:
 # ── Smoke test ────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("Test 0: Camelot compatibility logic")
-    print("=" * 60)
-    assert camelot_compat("8A", "8A") == "perfect",    "FAIL: same position"
-    assert camelot_compat("8A", "8B") == "compatible", "FAIL: relative major/minor"
-    assert camelot_compat("8A", "9A") == "compatible", "FAIL: adjacent fifth"
-    assert camelot_compat("8A", "3B") == "clash",      "FAIL: distant keys"
-    assert camelot_compat(None, "8A") == "unknown",    "FAIL: None input"
-    assert camelot_compat("12A", "1A") == "compatible","FAIL: wrap-around fifth (12->1)"
-    print(" All Camelot assertions passed.")
-
-    print()
     print("=" * 60)
     print("Test 1: Deezer catalogue fetch (Ben Klock)")
     print("=" * 60)
@@ -781,11 +567,9 @@ if __name__ == "__main__":
     print()
     for i, t in enumerate(setlist["tracks"], 1):
         preview_marker = "[preview]" if t["preview_url"] else "[no preview]"
-        bpm_str = f"{t['bpm']} BPM" if t.get("bpm") else "no BPM"
-        camelot_str = t.get("camelot") or "no key"
         print(
             f" {i}. {t['artist']} - {t['title']} "
-            f"(energy {t['energy']}) {preview_marker} | {bpm_str} | {camelot_str}"
+            f"(energy {t['energy']}) {preview_marker}"
         )
         if t.get("llm_title"):
             print(f"    (LLM picked: {t['llm_artist']} - {t['llm_title']})")

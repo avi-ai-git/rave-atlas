@@ -2,9 +2,10 @@
 
 > An AI agent for Berlin's electronic music scene: a weekend event concierge, a music teacher, a set builder, and a Europe-wide rave browser, in one app.
 
-[![Tests](https://img.shields.io/badge/tests-254%20passing-brightgreen)](#running-tests)
+[![Tests](https://img.shields.io/badge/tests-256%20passing-brightgreen)](#running-tests)
 [![Python](https://img.shields.io/badge/python-3.12-blue)](pyproject.toml)
 [![Streamlit](https://img.shields.io/badge/UI-Streamlit-ff4b4b)](app.py)
+[![Live demo](https://img.shields.io/badge/live-berlin--rave--atlas.streamlit.app-D63031)](https://berlin-rave-atlas.streamlit.app)
 
 ---
 
@@ -26,13 +27,13 @@ Berlin has the densest electronic music scene on earth, and planning a night in 
 
 Four things, each with its own tab.
 
-**Raves in Berlin** is the agent you talk to. Ask "what's on this Friday under 15 euros near Kreuzberg" or "something hypnotic and 90s-influenced tonight" and it fetches live Resident Advisor events, reasons over them against your taste profile, and tells you which nights fit and which do not, with a clean listing and a direct link for every event. It learns from the picks you rate.
+**Plan Your Night** is the agent you talk to. Ask "what's on this Friday under 15 euros near Kreuzberg" or "something hypnotic and 90s-influenced tonight" and it fetches live Resident Advisor events, reasons over them against your taste profile, and tells you which nights fit and which do not, with a clean listing and a direct link for every event. It learns from the picks you rate.
 
-**Rave Set Builder** builds a tracklist with a deliberate energy arc. Give it a vibe, a time of night, a track count, or a venue, and it returns an artist and title per track with a one-line reason for each position, plus 30-second Deezer previews and YouTube links.
+**Rave Set Builder** builds a tracklist with a deliberate energy arc. Give it a vibe, a time of night, a track count, or a venue, and it returns an artist and title per track with a one-line reason for each position, plus 30-second Deezer previews and YouTube links. Tracks are grounded in Deezer's real catalogue so the titles are always playable.
 
-**Rave Culture & Music** is the knowledge tab. Ask about genres, Berlin's club history, record labels, DJ technique, door culture, harm reduction, or how a techno track is built. When the knowledge base does not have something, it searches the web and tells you which answer came from where.
+**Learn the Scene** is the knowledge tab. Ask about genres, Berlin's club history, record labels, DJ technique, door culture, harm reduction, or how a techno track is built. When the knowledge base does not have something, it searches the web and tells you which answer came from where.
 
-**Beyond Berlin** is a direct browse of Resident Advisor events for any European city, by date, genre, price, and area. No agent, just the listings, honestly.
+**Raves Beyond Berlin** is a direct browse of Resident Advisor events for any European city, by date, genre, price, and area. No agent, just the listings, honestly.
 
 ---
 
@@ -43,9 +44,9 @@ The architecture is the choice of which technique fits each surface, not a singl
 | Technique | Where | Why |
 |---|---|---|
 | Prompt engineering | `prompts/` | Shapes every generation: persona, few-shot energy-arc examples, the ranking guide. Author-time, single step. |
-| Retrieval (RAG) | Rave Culture & Music | Grounds answers in the curated KB. Used when facts must be sourced, not invented. |
-| Agent (ReAct) | Raves in Berlin, Rave Culture & Music | Multi-step reasoning with runtime tool selection. |
-| Direct tool call | Rave Set Builder, Beyond Berlin | One well-defined job where a deterministic call beats asking a model to decide to make it. |
+| Retrieval (RAG) | Learn the Scene | Grounds answers in the curated KB. Used when facts must be sourced, not invented. |
+| Agent (ReAct) | Plan Your Night, Learn the Scene | Multi-step reasoning with runtime tool selection. |
+| Direct tool call | Rave Set Builder, Raves Beyond Berlin | One well-defined job where a deterministic call beats asking a model to decide to make it. |
 
 **Why a ReAct agent and not a static chain or plain RAG.** The app has three task shapes plus cross-cutting enrichment. A chain fixes the tool path when the code is written; a retrieval-only app can only answer from documents. The agent reads the message and decides at runtime which tools to call, in what order, and when it has enough to answer. So a question that needs several steps works in one turn: "find events this Friday, tell me about the headliner at the top pick, and build me a warm-up set in that style" runs `find_events`, `enrich_artist`, and `build_setlist` in a single reply.
 
@@ -94,7 +95,7 @@ agent.py        LangGraph ReAct agent (langchain.agents.create_agent)
 
 **Observability.** LangSmith traces every LLM call and tool invocation when `LANGCHAIN_TRACING_V2=true`.
 
-**Models.** Three, one per provider: Claude Haiku 4.5 on OpenRouter (the default, fast and works out of the box), Mistral Large (a capable alternative that reuses the moderation key), and GPT-OSS 120B on Ollama Cloud (open-weights, proves the same client routes to a third provider). All three live in `config.py`.
+**Models.** Five across three providers: Claude Haiku 4.5 on OpenRouter is the default, fast and works without any extra configuration. Gemini 2.5 Flash and GPT-4o Mini also route through OpenRouter. Mistral Large reuses the key that already powers the moderation call. GPT-OSS 120B on Ollama Cloud is an open-weights option that proves the same client routes to a third provider unchanged. All five live in `config.py`.
 
 ---
 
@@ -167,7 +168,7 @@ On first load the app seeds ChromaDB from the knowledge base markdown, which tak
 ## Running tests
 
 ```bash
-uv run pytest              # the full suite (254 tests)
+uv run pytest              # the full suite (256 tests)
 uv run pytest -v           # verbose
 uv run pytest tests/test_injection.py   # the injection corpus only
 ```

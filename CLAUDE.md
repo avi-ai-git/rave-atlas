@@ -85,14 +85,14 @@ All three, layered on purpose.
 |---|---|---|
 | Prompt engineering | `prompts/` | Shapes every generation: the persona, the few-shot energy-arc examples, the ranking guide. Author-time, single step. |
 | Retrieval (RAG) | `tools/music_kb.py` | Grounds music answers in the curated KB. Used when facts must be sourced, not invented. |
-| Agent (ReAct) | `agent.py`, the Raves in Berlin and Rave Culture & Music tabs | Multi-step reasoning with runtime tool selection. |
+| Agent (ReAct) | `agent.py`, the Plan Your Night and Learn the Scene tabs | Multi-step reasoning with runtime tool selection. |
 | Direct tool call | the Rave Set Builder and Beyond Berlin tabs | Single, well-defined work where a deterministic call beats asking a model to decide to make it. |
 
 ---
 
 ## 5. Runtime models
 
-The default runtime model is **Claude Haiku 4.5** on OpenRouter: the fastest and cheapest tier, and the one model that works on a default OpenRouter account without privacy-policy configuration, so a fresh clone runs out of the box. **Mistral Large** is the second option and reuses the same key that powers the moderation call. **GPT-OSS 120B** on Ollama Cloud is the third, an open-weights model that proves the same client routes to a third provider unchanged; it needs `OLLAMA_API_KEY`. All three are defined in `config.py`; the picker is intentionally limited to these three so the surface stays honest about what is wired and tested.
+The default runtime model is **Claude Haiku 4.5** on OpenRouter: the fastest and cheapest tier, and the one model that works on a default OpenRouter account without privacy-policy configuration, so a fresh clone runs out of the box. The sidebar exposes four alternatives: **Gemini 2.5 Flash** and **GPT-4o Mini** also route through OpenRouter, **Mistral Large** reuses the same key that powers the moderation call, and **GPT-OSS 120B** on Ollama Cloud is an open-weights model that proves the same client routes to a third provider unchanged. All five are defined in `config.py` and route through the same `llm_client.chat()` call without any provider-specific branching in the calling code.
 
 ---
 
@@ -117,7 +117,7 @@ berlin-rave-atlas/
     music_kb.py           explain_music, RAG with allowlist and gap-honesty
     events.py             find_events (RA GraphQL, city-aware) + compare_events
     artists.py            enrich_artist, Discogs primary, MusicBrainz fallback
-    setlist.py            build_setlist, LLM arc + Deezer previews + YouTube
+    setlist.py            build_setlist, two-pass arc (artist plan + Deezer catalogue grounding), YouTube
     clubs.py              find_club, deterministic Berlin club registry lookup
     club_registry.py      The Berlin club table (addresses, official links)
     web.py                web_search, keyless DuckDuckGo fallback, gap-honest
@@ -130,7 +130,7 @@ berlin-rave-atlas/
     weekend-digest.yml    Cron that runs the Telegram digest, app-independent
   knowledge_base/         27 curated markdown files, ingested to ChromaDB (351 chunks)
   data/                   Gitignored, chroma/ and the SQLite database
-  tests/                  pytest suite, 254 tests, offline by default
+  tests/                  pytest suite, 256 tests, offline by default
 ```
 
 ---
@@ -143,7 +143,7 @@ The agent picks among these at runtime.
 2. `find_events` fetches live events from Resident Advisor and returns clean, normalised event data.
 3. `compare_events` ranks fetched events against the taste profile with plain-language reasoning, not numeric scores.
 4. `enrich_artist` pulls labels, genres, and releases from Discogs, falling back to MusicBrainz.
-5. `build_setlist` generates an energy-arc set list with Deezer previews and YouTube links.
+5. `build_setlist` generates an energy-arc set list in two passes. Pass 1 has the model plan the arc and choose artists (what the model is good at: genre knowledge, scene positioning). Between passes, Deezer is queried for each artist's real streamable catalogue. Pass 2 has the model choose a specific track from that verified list at temperature 0.2 (selection from a fixed menu, not generation). This structure eliminates hallucinated track titles structurally: invented titles are impossible for any artist Deezer knows. Each track is enriched with a 30-second Deezer preview and a YouTube link.
 6. `find_club` looks up a Berlin venue's official site, events page, and address from a curated registry, a deterministic fact lookup rather than a vector search.
 7. `web_search` is the keyless fallback for current facts outside the knowledge base, with results treated as untrusted data.
 

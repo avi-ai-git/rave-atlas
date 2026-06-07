@@ -32,12 +32,15 @@ OLLAMA_BASE_URL: str = os.environ.get("OLLAMA_BASE_URL", "https://ollama.com/v1"
 
 # ── Curated model list ────────────────────────────────────────────────────────
 #
-# Three models, one per provider, chosen to demonstrate the multi-provider
-# router (llm_client.py) without bloating the picker:
+# Five models across three providers, wired to demonstrate the multi-provider
+# router in llm_client.py:
 #
 #   - Claude Haiku 4.5 (OpenRouter): the default. Fastest and cheapest tier,
 #     and the one model that works on a default OpenRouter account without any
 #     privacy-policy configuration, so a fresh clone runs out of the box.
+#   - Gemini 2.5 Flash (OpenRouter/Google): fast alternative, also on OpenRouter
+#     so no extra credential needed.
+#   - GPT-4o Mini (OpenRouter/OpenAI): OpenAI's small model, same OpenRouter key.
 #   - Mistral Large (Mistral): a capable non-Anthropic alternative. It reuses
 #     the same MISTRAL_API_KEY that powers the safety moderation call, so
 #     enabling it costs no extra credential.
@@ -314,12 +317,6 @@ SERPER_API_KEY: str = os.environ.get("SERPER_API_KEY", "")
 # Get a key at console.cloud.google.com -> YouTube Data API v3 (free: 10k units/day;
 # one search = 100 units, so a 16-track set costs 1600 units).
 YOUTUBE_API_KEY: str = os.environ.get("YOUTUBE_API_KEY", "")
-# Optional. When set, the set builder fetches real BPM, musical key, and Camelot
-# wheel position for every track via the Spotify Audio Features API.
-# Free Spotify developer account: developer.spotify.com -> create an app ->
-# copy Client ID and Client Secret. Client Credentials flow only — no user login.
-SPOTIFY_CLIENT_ID: str = os.environ.get("SPOTIFY_CLIENT_ID", "")
-SPOTIFY_CLIENT_SECRET: str = os.environ.get("SPOTIFY_CLIENT_SECRET", "")
 # Mistral's OpenAI-compatible endpoint. The same MISTRAL_API_KEY powers both the
 # safety moderation call (safety.py) and Mistral Large as a selectable chat model.
 MISTRAL_BASE_URL: str = os.environ.get(
