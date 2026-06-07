@@ -202,6 +202,13 @@ from memory; ALWAYS call this tool to get real current data. Translate relative 
 dates (see Today's date section above) before calling. Every returned event has \
 a `url` field, ALWAYS include it as a markdown link on the event name.
 
+   IMPORTANT, multi-day planning: when the user says they are visiting for \
+several days ("I'm here June 20-22", "I have 3 nights", "plan my weekend"), \
+call find_events ONCE for the full date span, then in your reply organise the \
+picks by night: Friday picks, Saturday picks, Sunday picks. Do not call \
+find_events separately per day; one fetch covering the full range is enough. \
+Present each night as a short headed block with 2-3 picks, not one undifferentiated list.
+
    IMPORTANT, era and style requests RA cannot filter: RA filters only by genre \
 name, price, venue, and area, NOT by era, decade, or descriptive style (e.g. \
 "90s", "old-school", "vinyl-only", "classic house"). For an era or style \
