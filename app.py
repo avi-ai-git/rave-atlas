@@ -192,7 +192,7 @@ def _inject_css() -> None:
 
 # ── Knowledge-base warm-up (Streamlit Cloud cold start) ───────────────────────
 
-@st.cache_resource(show_spinner="Building knowledge base, first run only...")
+@st.cache_resource(show_spinner=False)
 def _ensure_kb_seeded() -> None:
     """Seed ChromaDB on first process start (no-op afterwards)."""
     from ingest import get_collection, ingest
@@ -765,7 +765,26 @@ def main() -> None:
     st.set_page_config(page_title="Berlin Rave Atlas", page_icon="🎛️", layout="wide",
                        initial_sidebar_state="expanded")
     _inject_css()
-    _ensure_kb_seeded()
+    # Show a centred loading screen on the first cold start while ChromaDB seeds.
+    # cache_resource means this only ever runs once per process; subsequent page
+    # loads skip it entirely and the placeholder is never shown.
+    from ingest import get_collection
+    _needs_seed = get_collection().count() == 0
+    if _needs_seed:
+        with st.spinner(""):
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                st.markdown(
+                    "<div style='text-align:center; padding: 4rem 0;'>"
+                    "<div style='font-size:2.5rem; margin-bottom:1rem;'>🎛️</div>"
+                    "<h2 style='margin-bottom:0.5rem;'>Building knowledge base</h2>"
+                    "<p style='color:gray;'>First run only — this takes about 30 seconds.</p>"
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
+            _ensure_kb_seeded()
+    else:
+        _ensure_kb_seeded()
     _init_session()
     get_scheduler() # local convenience; production automation runs via GitHub Actions
 
