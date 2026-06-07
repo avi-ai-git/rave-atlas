@@ -568,6 +568,10 @@ def _render_chat(tab_key: str, empty_hint: str) -> None:
 
 def _handle_chat_input(tab_key: str, settings: dict, placeholder: str) -> None:
     prompt = st.chat_input(placeholder, key=f"chat_input_{tab_key}")
+    # Pick up an auto-submit queued by the "Discuss these events" button
+    auto_key = f"auto_submit_{tab_key}"
+    if not prompt and auto_key in st.session_state:
+        prompt = st.session_state.pop(auto_key)
     if not prompt:
         return
     messages = st.session_state[f"messages_{tab_key}"]
@@ -601,22 +605,19 @@ def _handle_chat_input(tab_key: str, settings: dict, placeholder: str) -> None:
 def _render_digest_section() -> None:
     session_id = st.session_state["session_id"]
     digest = memory.load_digest(session_id) or memory.load_digest("__global__")
-    with st.expander("Berlin weekend digest" + ("" if digest else " (tap to generate)"), expanded=False):
+    label = "Agent's Top Picks" + ("" if digest else " — tap to generate")
+    with st.expander(label, expanded=bool(digest)):
         if digest:
             st.markdown(digest)
         else:
-            st.info(
-                "No digest yet. In production a Friday-morning GitHub Actions job sends "
-                "this to Telegram; here you can generate it on demand."
-            )
-        if st.button("Generate / refresh digest", key="btn_regen_digest"):
-            with st.spinner("Fetching Berlin events and writing the digest..."):
+            st.caption("The agent hasn't picked yet. Hit the button to get AI-curated top events for this weekend, personalised to your taste profile.")
+        if st.button("Get fresh picks", key="btn_regen_digest"):
+            with st.spinner("Fetching Berlin events and writing your picks..."):
                 new_digest = generate_digest(session_id)
             if new_digest:
-                st.success("Digest ready.")
                 st.rerun()
             else:
-                st.warning("Could not generate the digest. Resident Advisor or the AI may be busy.")
+                st.warning("Could not generate picks. Resident Advisor or the AI may be busy.")
 
 
 # ── Berlin raw browse ─────────────────────────────────────────────────────────
@@ -641,7 +642,7 @@ def _render_berlin_browse() -> None:
         if not events:
             st.info("No Resident Advisor listings in that window. Try widening the dates.")
         else:
-            st.caption(f"{len(events)} parties on RA — ask the agent below about any of them.")
+            st.caption(f"{len(events)} parties on RA — switch to Chat to discuss any of them with the agent.")
             for evt in events:
                 _render_event_card(evt)
 
@@ -650,19 +651,39 @@ def _render_berlin_browse() -> None:
 
 
 def _tab_weekend(settings: dict) -> None:
-    st.info("Find Berlin rave events, compare them to your taste, and plan your night. Rate picks to sharpen future recommendations.", icon="📍")
-    st.caption(
-        "The agent fetches live events from Resident Advisor, ranks them against your taste, "
-        "and links every card to its RA page. Rating a pick updates your profile for next time."
-    )
-    st.divider()
-    _render_berlin_browse()
-    st.divider()
-    _render_digest_section()
-    st.divider()
-    _render_chat("weekend", "What's on in Berlin this weekend? Ask about any date, genre, or budget.")
-    _handle_chat_input("weekend", settings,
-                       placeholder="What's on this Friday? / Find me a night at Tresor or Sisyphos / Who's playing at Berghain this weekend?")
+    sub_find, sub_chat = st.tabs(["Find Parties", "Chat with Agent"])
+
+    with sub_find:
+        st.caption("Browse raw RA listings for any date window, then let the agent pick the best ones for you.")
+        _render_berlin_browse()
+        st.divider()
+        _render_digest_section()
+
+    with sub_chat:
+        browse_res = st.session_state.get("berlin_browse")
+        if browse_res and browse_res.get("events"):
+            events = browse_res["events"]
+            preview_names = [e.get("name", "") for e in events[:3] if e.get("name")]
+            preview = ", ".join(preview_names) + ("..." if len(events) > 3 else "")
+            col_info, col_btn = st.columns([3, 1])
+            col_info.info(f"Browsing **{len(events)} parties** — {preview}", icon="🗂️")
+            if col_btn.button("Discuss these events", key="btn_discuss_events"):
+                event_lines = "\n".join(
+                    f"- {e.get('name','')} at {e.get('venue','')} ({e.get('date_label','')}, {e.get('price','')})"
+                    for e in events[:10]
+                )
+                msg = (
+                    f"I've been browsing {len(events)} Berlin parties on RA. Here's the list:\n"
+                    f"{event_lines}\n\n"
+                    "Can you help me pick the best one and tell me more about the headliners or the sound?"
+                )
+                st.session_state["auto_submit_weekend"] = msg
+                st.rerun()
+        _render_chat("weekend", "What's on in Berlin this weekend? Ask about any date, genre, or budget.")
+        _handle_chat_input(
+            "weekend", settings,
+            placeholder="What's on this Friday? / Find me a night at Tresor or Sisyphos / Who's playing at Berghain?",
+        )
 
 
 def _tab_learn(settings: dict) -> None:
