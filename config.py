@@ -247,7 +247,7 @@ CITY_REGIONS: dict[str, list[str]] = {
     "All Europe": [],
     "Germany": [
         "Cologne", "Hamburg", "Frankfurt", "Munich", "Leipzig", "Düsseldorf",
-        "Stuttgart", "Nuremberg", "Dresden", "Mannheim", "Hannover", "Berlin",
+        "Stuttgart", "Nuremberg", "Dresden", "Mannheim", "Hannover",
     ],
     "United Kingdom & Ireland": [
         "London", "Manchester", "Bristol", "Edinburgh", "Glasgow",

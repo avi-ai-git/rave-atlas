@@ -375,6 +375,9 @@ def run() -> bool:
         logger.warning("telegram_find_events_failed", error=str(exc))
         ra_events = []
 
+    import random
+    random.shuffle(ra_events)
+
     scraped_events = _load_scraped_events(date_from, date_to)
     logger.info(
         "telegram_sources",

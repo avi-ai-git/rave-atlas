@@ -223,7 +223,7 @@ Write a digest in clean markdown using this structure:
 Rules: every event you name MUST be a markdown link to its url. Never write an
 event name without its link. Do not use em dashes or en dashes; use commas or
 full stops. Keep the whole digest under 350 words. Lead with the best pick, not
-a preamble.
+a preamble. Pick different top events each time, do not default to the same recurring names.
 """
 
 
@@ -262,6 +262,9 @@ def generate_digest(session_id: str) -> str | None:
         logger.warning("digest_find_events_failed", error=str(exc), session_id=session_id)
         events = []
 
+    import random
+    random.shuffle(events)
+
     prompt = _build_digest_prompt(
         date_from, date_to, events, profile,
         period_label=period_label, digest_type=digest_type,
@@ -270,7 +273,7 @@ def generate_digest(session_id: str) -> str | None:
     try:
         result = llm_client.chat(
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.5,
+            temperature=0.7,
         )
         digest_text = textfmt.humanize(result["text"].strip())
     except Exception as exc:

@@ -210,6 +210,7 @@ def _init_session() -> None:
         st.session_state.setdefault(f"messages_{tab}", [])
     st.session_state.setdefault("mix_sets", []) # list[{seed, setlist}]
     st.session_state.setdefault("intl_results", None) # last Beyond Berlin search
+    st.session_state.setdefault("berlin_browse", None)  # {events, count}
     st.session_state.setdefault("total_cost", 0.0)
     st.session_state.setdefault("total_tokens", 0)
     st.session_state.setdefault("rated_events", set())
@@ -277,11 +278,11 @@ def _render_sidebar() -> dict[str, Any]:
         with st.expander("How Berlin Rave Atlas works", expanded=False):
             st.markdown(
                 "**Four tabs, one agent, a curated knowledge base.**\n\n"
-                "- **Raves in Berlin** fetches live RA events, ranks them by your taste, "
+                "- **Plan Your Night** fetches live RA events, ranks them by your taste, "
                 "and links every card to its RA page. Rate picks to teach it what you like.\n"
                 "- **Rave Set Builder** takes a brief (slot, vibe, BPM) and builds a "
                 "playable 1-hour set with 30-second previews and YouTube links.\n"
-                "- **Rave Culture & Music** answers anything about genres, labels, scene "
+                "- **Learn the Scene** answers anything about genres, labels, scene "
                 "history, rave etiquette, and harm reduction from the curated knowledge "
                 "base. It falls back to web search when needed.\n"
                 "- **Beyond Berlin** browses live RA listings for any European city.\n\n"
@@ -618,15 +619,44 @@ def _render_digest_section() -> None:
                 st.warning("Could not generate the digest. Resident Advisor or the AI may be busy.")
 
 
+# ── Berlin raw browse ─────────────────────────────────────────────────────────
+
+def _render_berlin_browse() -> None:
+    st.markdown("#### Browse Berlin parties")
+    col_count, col_from, col_to, col_btn = st.columns([1, 1.5, 1.5, 1])
+    count = col_count.selectbox("Show", [5, 10, 25, 50], index=1, key="browse_count", label_visibility="collapsed")
+    today = date.today()
+    browse_from = col_from.date_input("From", value=today, key="browse_from", label_visibility="collapsed")
+    browse_to = col_to.date_input("To", value=today + timedelta(days=3), key="browse_to", label_visibility="collapsed")
+    if col_btn.button("Browse", type="primary", key="btn_browse_berlin"):
+        from tools.events import find_events as _find
+        with st.spinner("Fetching Berlin events..."):
+            events = _find(browse_from.isoformat(), browse_to.isoformat())
+        st.session_state["berlin_browse"] = {"events": events[:count], "count": count}
+        st.rerun()
+
+    res = st.session_state.get("berlin_browse")
+    if res:
+        events = res["events"]
+        if not events:
+            st.info("No Resident Advisor listings in that window. Try widening the dates.")
+        else:
+            st.caption(f"{len(events)} parties on RA — ask the agent below about any of them.")
+            for evt in events:
+                _render_event_card(evt)
+
+
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 
 
 def _tab_weekend(settings: dict) -> None:
-    st.info("Find and compare real Berlin rave events. Ask what's on, name a venue, or describe your taste. Rate picks to improve future suggestions.", icon="📍")
+    st.info("Find Berlin rave events, compare them to your taste, and plan your night. Rate picks to sharpen future recommendations.", icon="📍")
     st.caption(
         "The agent fetches live events from Resident Advisor, ranks them against your taste, "
         "and links every card to its RA page. Rating a pick updates your profile for next time."
     )
+    st.divider()
+    _render_berlin_browse()
     st.divider()
     _render_digest_section()
     st.divider()
@@ -636,7 +666,7 @@ def _tab_weekend(settings: dict) -> None:
 
 
 def _tab_learn(settings: dict) -> None:
-    st.info("Ask about genres, labels, scene history, rave culture, or harm reduction. This is the knowledge tab, not for finding events.", icon="📖")
+    st.info("Ask about genres, labels, scene history, rave culture, or harm reduction. This tab is purely for learning — for finding real events, use the Plan Your Night tab.", icon="📖")
     st.caption(
         "Answers are grounded in the curated knowledge base. When something falls outside "
         "it, the agent searches the web and tells you so."
@@ -697,6 +727,7 @@ def _tab_beyond_berlin(settings: dict) -> None:
     )
     region_cities = config.CITY_REGIONS.get(region) or []
     city_list = region_cities if region_cities else config.AVAILABLE_CITIES
+    city_list = [c for c in city_list if c != "Berlin"]
     city = col_city.selectbox("City", city_list, index=None, placeholder="Select a city...")
 
     # ── Date range ────────────────────────────────────────────────────────────
@@ -797,7 +828,7 @@ def main() -> None:
     )
 
     tab_weekend, tab_mix, tab_learn, tab_beyond = st.tabs(
-        ["Raves in Berlin", "Rave Set Builder", "Rave Culture & Music", "Beyond Berlin"]
+        ["Plan Your Night", "Rave Set Builder", "Learn the Scene", "Beyond Berlin"]
     )
     with tab_weekend:
         _tab_weekend(settings)
