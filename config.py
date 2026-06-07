@@ -53,6 +53,16 @@ AVAILABLE_MODELS: list[dict[str, str]] = [
         "provider": "openrouter",
     },
     {
+        "id": "google/gemini-2.5-flash",
+        "name": "Gemini 2.5 Flash (Google)",
+        "provider": "openrouter",
+    },
+    {
+        "id": "openai/gpt-4o-mini",
+        "name": "GPT-4o Mini (OpenAI)",
+        "provider": "openrouter",
+    },
+    {
         "id": "mistral-large-latest",
         "name": "Mistral Large",
         "provider": "mistral",
@@ -77,6 +87,8 @@ DEFAULT_MODEL: str = os.environ.get(
 # per-token, so they show as 0.0 here and the cost badge reads $0 for them.
 MODEL_PRICES: dict[str, tuple[float, float]] = {
     "anthropic/claude-haiku-4.5": (0.00025, 0.00125),
+    "google/gemini-2.5-flash": (0.00015, 0.0006),
+    "openai/gpt-4o-mini": (0.00015, 0.0006),
     "mistral-large-latest": (0.002, 0.006),
     "gpt-oss:120b": (0.0, 0.0),
 }

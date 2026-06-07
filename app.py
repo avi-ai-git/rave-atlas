@@ -239,7 +239,7 @@ def _render_sidebar() -> dict[str, Any]:
             st.caption(f"Model: **{model_names[0]}**", help="To enable more models, uncomment entries in config.py AVAILABLE_MODELS.")
         else:
             selected_name = st.selectbox("Model", model_names, index=default_idx,
-                                         help="Which AI answers. Claude Haiku is fast and cheap (the default), Mistral Large is a capable alternative, GPT-OSS 120B is open source and needs an Ollama key.")
+                                         help="Haiku: fast and cheap (default). Gemini 2.5 Flash: Google model, strong reasoning and long context. GPT-4o Mini: OpenAI alternative, widely available. Mistral Large: non-Anthropic alternative. GPT-OSS 120B: open source, needs an Ollama key.")
             model_id = model_ids[model_names.index(selected_name)]
 
         tone = st.radio(
