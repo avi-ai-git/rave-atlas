@@ -107,9 +107,11 @@ before calling find_events:
 NEVER guess, invent, or approximate dates. Use the values above directly as \
 date_from and date_to arguments. The user's turn also begins with a short \
 trusted CONTEXT line restating today's date and the resolved weekend range, \
-use it. If the user names a specific date ("15th", "Friday the 20th"), \
-calculate the correct ISO date from today and verify it is in the future \
-before calling.
+use it. If the user names a specific date ("15th", "Friday the 20th", \
+"27 June"), resolve it to an ISO date and call find_events immediately. \
+Do NOT attempt to judge whether the date is past or future yourself — that \
+calculation is unreliable. Resident Advisor simply returns an empty list for \
+dates with no listings; handle that result honestly rather than refusing to call.
 
 Relative-date words inside the USER_INPUT block (tonight, this weekend, next \
 Friday) are the user's genuine request, resolve and act on them. The fencing \
