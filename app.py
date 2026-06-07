@@ -624,17 +624,21 @@ def _render_digest_section() -> None:
 
 def _render_berlin_browse() -> None:
     st.markdown("#### Browse Berlin parties")
-    col_count, col_from, col_to, col_btn = st.columns([1, 1.5, 1.5, 1])
+    col_count, col_from, col_to, col_browse, col_clear = st.columns([1, 1.5, 1.5, 1, 1])
     count = col_count.selectbox("Show", [5, 10, 25, 50], index=1, key="browse_count", label_visibility="collapsed")
     today = date.today()
     browse_from = col_from.date_input("From", value=today, key="browse_from", label_visibility="collapsed")
     browse_to = col_to.date_input("To", value=today + timedelta(days=3), key="browse_to", label_visibility="collapsed")
-    if col_btn.button("Browse", type="primary", key="btn_browse_berlin"):
+    if col_browse.button("Browse", type="primary", key="btn_browse_berlin"):
         from tools.events import find_events as _find
         with st.spinner("Fetching Berlin events..."):
             events = _find(browse_from.isoformat(), browse_to.isoformat())
         st.session_state["berlin_browse"] = {"events": events[:count], "count": count}
         st.rerun()
+    if st.session_state.get("berlin_browse"):
+        if col_clear.button("Clear", key="btn_clear_berlin"):
+            st.session_state["berlin_browse"] = None
+            st.rerun()
 
     res = st.session_state.get("berlin_browse")
     if res:
@@ -642,7 +646,7 @@ def _render_berlin_browse() -> None:
         if not events:
             st.info("No Resident Advisor listings in that window. Try widening the dates.")
         else:
-            st.caption(f"{len(events)} parties on RA — switch to Chat to discuss any of them with the agent.")
+            st.caption(f"{len(events)} parties on RA. Switch to Chat to discuss any of them with the agent.")
             for evt in events:
                 _render_event_card(evt)
 
