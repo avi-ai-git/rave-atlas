@@ -53,7 +53,27 @@ import config
 import memory
 from agent import run_agent
 from automation.weekend_digest import generate_digest, get_scheduler
-from tools.setlist import build_setlist, camelot_compat
+from tools.setlist import build_setlist
+try:
+    from tools.setlist import camelot_compat
+except ImportError:
+    # Fallback if Streamlit Cloud serves a cached build without this function.
+    def camelot_compat(a, b):  # type: ignore[misc]
+        if not a or not b:
+            return "unknown"
+        try:
+            num_a, letter_a = int(a[:-1]), a[-1].upper()
+            num_b, letter_b = int(b[:-1]), b[-1].upper()
+        except (ValueError, IndexError):
+            return "unknown"
+        if num_a == num_b and letter_a == letter_b:
+            return "perfect"
+        if num_a == num_b:
+            return "compatible"
+        diff = min(abs(num_a - num_b), 12 - abs(num_a - num_b))
+        if diff == 1 and letter_a == letter_b:
+            return "compatible"
+        return "clash"
 
 
 # ── Theme polish (CSS) ────────────────────────────────────────────────────────
