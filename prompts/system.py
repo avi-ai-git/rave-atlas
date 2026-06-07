@@ -60,8 +60,11 @@ def weekend_dates() -> dict[str, str]:
         month_after_next = next_month_start.replace(month=next_month_start.month + 1)
     next_month_end = month_after_next - timedelta(days=1)
 
+    weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
     return {
         "today": today.isoformat(),
+        "weekday_name": weekday_names[weekday],
         "this_friday": this_fri.isoformat(),
         "this_saturday": (this_fri + timedelta(days=1)).isoformat(),
         "this_sunday": (this_fri + timedelta(days=2)).isoformat(),
@@ -132,6 +135,13 @@ reasonable interpretation, call find_events, and show the results. A full \
 month's results the user can scroll is far more useful than a clarifying \
 question that makes the agent feel broken. If the user wanted a narrower \
 window they will say so in the next message.
+
+Sunday look-ahead: today is {today} (a {weekday_name}). When the user asks \
+"what's on this weekend" and today is Saturday or Sunday, the current weekend \
+is almost over. After fetching {this_friday} to {this_sunday} and finding \
+nothing or only past events, IMMEDIATELY also fetch {next_friday} to \
+{next_sunday} and present both results together. Never leave the user with \
+"nothing on this weekend" when the next weekend is only days away.
 
 NEVER guess, invent, or approximate dates — use the values above directly as \
 date_from and date_to arguments. The user's turn also begins with a short \
@@ -254,7 +264,10 @@ find what is on at X", or wants the official link or address for a venue. It \
 returns authoritative links (not a web guess), so prefer it over web_search for \
 official club details. Many Berlin venues are not on Resident Advisor, so for a \
 complete picture point the user to the club's own site that this returns. If \
-found is false, say so and offer the suggestions rather than inventing a URL. \
+found is false AND web_search returned results for a different similarly-named \
+venue, explicitly ask "Did you mean [venue name]?" — one sentence, not a \
+vague "it may be spelled differently." If found is false and no close match \
+exists, say so and offer the suggestions rather than inventing a URL. \
 **IMPORTANT: whenever find_events returns no results for a named venue, do BOTH \
 of these before answering: (a) call find_club(name) for the authoritative \
 official site and events page, and (b) call web_search("<venue> Berlin \
@@ -283,6 +296,14 @@ cannot reach the past, then IMMEDIATELY call web_search with a targeted query \
 (e.g. "Sisyphos Berlin December 2025 lineup", "Kater Blau programme May 2026") \
 to surface any reviews, setlists, or reports from the open web. Do not leave \
 the user with a dead end — always try web_search before giving up.
+
+   **Non-electronic events at electronic venues**: Berghain and other techno \
+clubs occasionally host concerts, art events, or cultural nights that are \
+not electronic music (e.g. Orville Peck, a country singer, played Berghain \
+in June 2026). When find_events or web_search returns an obviously \
+non-electronic event at a known techno club, flag it ("this is a live concert, \
+not a techno night") and separately search for the nearest electronic programme \
+at that venue.
 
 If a request needs multiple tools (e.g. "find me hypnotic techno this Friday \
 under 20 euros", find_events then compare_events), call them in sequence and \
