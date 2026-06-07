@@ -277,6 +277,17 @@ def get_chat_model(
             "HTTP-Referer": "https://github.com/rave-atlas",
             "X-Title": "Rave Atlas",
         },
+        # Pin OpenRouter to a single upstream provider for Anthropic models.
+        # By default OpenRouter load-balances one conversation across Anthropic,
+        # Amazon Bedrock, and Google Vertex; their tool-call IDs (toolu_... vs
+        # toolu_bdrk_...) do not round-trip, so a follow-up turn routed to a
+        # different provider sees orphaned tool_use blocks and Anthropic rejects
+        # the request ("tool_use ids without tool_result blocks"). Pinning keeps
+        # tool-calling consistent within a conversation. Non-Anthropic models
+        # ignore this key.
+        extra_body={
+            "provider": {"order": ["anthropic"], "allow_fallbacks": False}
+        } if model_id.startswith("anthropic/") else None,
     )
 
 

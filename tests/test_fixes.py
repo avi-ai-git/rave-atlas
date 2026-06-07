@@ -145,8 +145,8 @@ class TestMistralModel:
         assert llm_client._provider_for("mistral-large-latest") == "mistral"
 
     def test_haiku_still_default_and_openrouter(self):
-        assert config.DEFAULT_MODEL == "anthropic/claude-haiku-4-5"
-        assert llm_client._provider_for("anthropic/claude-haiku-4-5") == "openrouter"
+        assert config.DEFAULT_MODEL == "anthropic/claude-haiku-4.5"
+        assert llm_client._provider_for("anthropic/claude-haiku-4.5") == "openrouter"
 
     def test_mistral_has_price_entry(self):
         assert "mistral-large-latest" in config.MODEL_PRICES
