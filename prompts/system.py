@@ -58,20 +58,20 @@ def weekend_dates() -> dict[str, str]:
 # ── Tone variants ─────────────────────────────────────────────────────────────
 # Selected by the UI sidebar; injected per session. Default is "concise".
 TONE_INSTRUCTIONS: dict[str, str] = {
-    "concise": (
+    "Concise": (
         "Tone: short and direct. No preamble, no recap of the question, no closing "
         "pleasantries. If a one-sentence answer is enough, give one sentence. Bullet "
         "lists over paragraphs when there is more than one thing to say. Get to the "
         "point fast."
     ),
-    "elaborated": (
+    "Detailed": (
         "Tone: warm and thorough. Use full sentences and explain the reasoning behind "
         "recommendations. Write like a knowledgeable friend who enjoys talking about "
         "the scene, not a bot processing a query. Include the context that makes a "
         "recommendation make sense: why this venue, why this night, what to expect. "
         "Contractions and natural language are fine."
     ),
-    "expert": (
+    "Expert": (
         "Tone: insider. You are a Berlin regular who has been going to Berghain, "
         "Tresor, OHM, and about blank for years. You follow labels (Klockworks, "
         "Ostgut Ton, Mote-Evolver, Semantica), you know BPM signatures by ear, and "
@@ -332,7 +332,7 @@ def build_system_prompt(
     Returns:
         A complete system prompt string ready to feed to the LLM.
     """
-    tone_instr = TONE_INSTRUCTIONS.get(tone, TONE_INSTRUCTIONS["concise"])
+    tone_instr = TONE_INSTRUCTIONS.get(tone, TONE_INSTRUCTIONS["Concise"])
     profile_block = _format_taste_profile(taste_profile)
     dates = weekend_dates()
     return SYSTEM_PROMPT.format(

@@ -245,34 +245,15 @@ def _render_sidebar() -> dict[str, Any]:
 
         tone = st.radio(
             "Tone",
-            options=["concise", "elaborated", "expert"],
+            options=["Concise", "Detailed", "Expert"],
             index=0,
             horizontal=True,
             help=(
-                "concise = straight to the point. "
-                "elaborated = full context and reasoning. "
-                "expert = insider level, labels, BPMs, scene history."
+                "Concise = straight to the point. "
+                "Detailed = full context and reasoning. "
+                "Expert = insider level, labels, BPMs, scene history."
             ),
         )
-
-        with st.expander("Advanced, response sampling", expanded=False):
-            st.caption(
-                "Two dials that change how the AI writes. Leave them as they are "
-                "unless you want to experiment."
-            )
-            st.caption(
-                "**Temperature** controls creativity. Low (near 0) makes answers "
-                "focused and repeatable; high makes them more varied and surprising. "
-                "0.7 is a balanced default."
-            )
-            st.caption(
-                "**Top-p** controls how wide a vocabulary the AI draws from. At 1.0 "
-                "it considers all word options; lower values keep it to the most "
-                "likely words, which makes writing safer and more predictable. "
-                "Leave it at 1.0 unless answers feel too loose."
-            )
-            temperature = st.slider("Temperature (creativity)", 0.0, 1.5, 0.7, 0.05)
-            top_p = st.slider("Top-p (vocabulary breadth)", 0.5, 1.0, 1.0, 0.05)
 
         st.divider()
         with st.expander("How Berlin Rave Atlas works", expanded=False):
@@ -286,8 +267,8 @@ def _render_sidebar() -> dict[str, Any]:
                 "history, rave etiquette, and harm reduction from the curated knowledge "
                 "base. It falls back to web search when needed.\n"
                 "- **Beyond Berlin** browses live RA listings for any European city.\n\n"
-                "Set **Tone** above to control depth. concise for quick answers, "
-                "elaborated for full context, expert for label lineage and BPMs."
+                "Set **Tone** above to control depth. Concise for quick answers, "
+                "Detailed for full context, Expert for label lineage and BPMs."
             )
 
         st.divider()
@@ -307,7 +288,7 @@ def _render_sidebar() -> dict[str, Any]:
 
         st.caption(f"Session `{st.session_state['session_id'][:8]}...`")
 
-    return {"model_id": model_id, "tone": tone, "temperature": temperature, "top_p": top_p}
+    return {"model_id": model_id, "tone": tone}
 
 
 # ── Small shared renderers ────────────────────────────────────────────────────
@@ -538,14 +519,14 @@ def _render_setlist(sl: dict) -> None:
 
 # ── Chat message renderer (Weekend / Learn) ───────────────────────────────────
 
-def _render_chat(tab_key: str, empty_hint: str) -> None:
+def _render_chat(tab_key: str, empty_hint: str, show_event_cards: bool = True) -> None:
     messages = st.session_state[f"messages_{tab_key}"]
     if not messages:
         st.caption(empty_hint)
         return
     # Event cards are rendered once, for the first assistant message that
-    # called find_events. Follow-up messages never re-render the same cards;
-    # the agent's text already references events by name with RA links.
+    # called find_events (only when show_event_cards=True). Follow-up messages
+    # never re-render the same cards; the agent's text has RA links inline.
     events_rendered_at: int | None = None
     for idx, msg in enumerate(messages):
         with st.chat_message(msg["role"]):
@@ -555,12 +536,11 @@ def _render_chat(tab_key: str, empty_hint: str) -> None:
                 st.markdown(msg["content"])
             if msg["role"] == "assistant" and not msg.get("blocked"):
                 tc = msg.get("tool_calls", [])
-                if tab_key == "weekend":
+                if tab_key == "weekend" and show_event_cards:
                     has_events = any(c.get("name") == "find_events" for c in tc)
                     if has_events and events_rendered_at is None:
                         _render_events_block(tc, idx)
                         events_rendered_at = idx
-                    # Subsequent turns: event cards already visible above, skip.
                 _render_tool_trace(tc)
                 if msg.get("usage"):
                     _render_cost_badge(msg.get("model", ""), msg["usage"], msg.get("cost_estimate", 0.0))
@@ -582,8 +562,6 @@ def _handle_chat_input(tab_key: str, settings: dict, placeholder: str) -> None:
             session_id=st.session_state["session_id"],
             model_id=settings["model_id"],
             tone=settings["tone"],
-            temperature=settings["temperature"],
-            top_p=settings["top_p"],
             thread_key=_thread_key(tab_key),
         )
     messages.append({
@@ -658,32 +636,45 @@ def _tab_weekend(settings: dict) -> None:
     sub_find, sub_chat = st.tabs(["Find Parties", "Chat with Agent"])
 
     with sub_find:
-        st.caption("Browse raw RA listings for any date window, then let the agent pick the best ones for you.")
-        _render_berlin_browse()
-        st.divider()
         _render_digest_section()
+        st.divider()
+        st.caption("Browse raw RA listings for any date window, then take them to the agent.")
+        _render_berlin_browse()
 
     with sub_chat:
         browse_res = st.session_state.get("berlin_browse")
         if browse_res and browse_res.get("events"):
             events = browse_res["events"]
+            n = len(events)
             preview_names = [e.get("name", "") for e in events[:3] if e.get("name")]
-            preview = ", ".join(preview_names) + ("..." if len(events) > 3 else "")
-            col_info, col_btn = st.columns([3, 1])
-            col_info.info(f"Browsing **{len(events)} parties**: {preview}", icon="🗂️")
-            if col_btn.button("Discuss these events", key="btn_discuss_events"):
+            preview = ", ".join(preview_names) + ("..." if n > 3 else "")
+            st.info(f"Browsing **{n} parties**: {preview}", icon="🗂️")
+            col_picks, col_discuss = st.columns(2)
+            if col_picks.button("Get event picks", use_container_width=True, key="btn_get_picks"):
                 event_lines = "\n".join(
                     f"- {e.get('name','')} at {e.get('venue','')} ({e.get('date_label','')}, {e.get('price','')})"
-                    for e in events[:10]
+                    for e in events
                 )
                 msg = (
-                    f"I've been browsing {len(events)} Berlin parties on RA. Here's the list:\n"
-                    f"{event_lines}\n\n"
+                    f"I've been browsing {n} Berlin parties on RA:\n{event_lines}\n\n"
+                    "Which of these should I go to and why? Give me your top picks with a short reason "
+                    "for each: the sound, the headliners, the venue, what makes it worth going."
+                )
+                st.session_state["auto_submit_weekend"] = msg
+                st.rerun()
+            if col_discuss.button("Discuss with agent", use_container_width=True, key="btn_discuss_events"):
+                event_lines = "\n".join(
+                    f"- {e.get('name','')} at {e.get('venue','')} ({e.get('date_label','')}, {e.get('price','')})"
+                    for e in events
+                )
+                msg = (
+                    f"I've been browsing {n} Berlin parties on RA. Here's the full list:\n{event_lines}\n\n"
                     "Can you help me pick the best one and tell me more about the headliners or the sound?"
                 )
                 st.session_state["auto_submit_weekend"] = msg
                 st.rerun()
-        _render_chat("weekend", "What's on in Berlin this weekend? Ask about any date, genre, or budget.")
+        _render_chat("weekend", "What's on in Berlin this weekend? Ask about any date, genre, or budget.",
+                     show_event_cards=False)
         _handle_chat_input(
             "weekend", settings,
             placeholder="What's on this Friday? / Find me a night at Tresor or Sisyphos / Who's playing at Berghain?",
