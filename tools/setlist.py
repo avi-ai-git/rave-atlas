@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import re
 import time
+import unicodedata
 import urllib.parse
 from typing import Any
 
@@ -109,21 +110,52 @@ _GENERIC_TITLES = frozenset({
 })
 
 
-def _artist_matches(requested: str, returned: str) -> bool:
-    """Loose artist name comparison: lowercase, strip punctuation, check overlap."""
-    def _normalise(s: str) -> str:
-        return re.sub(r"[^a-z0-9 ]", "", s.lower()).strip()
+def _fold(s: str) -> str:
+    """
+    Fold a name to a comparable form: accents removed (Âme -> ame, Rødhåd ->
+    rodhad), lowercased, punctuation flattened to spaces. Both sides of a
+    comparison go through this, so even imperfect folding stays symmetric.
+    """
+    # Manual map for letters NFKD does not decompose to ASCII.
+    s = s.translate(str.maketrans({"ø": "o", "Ø": "o", "æ": "ae", "Æ": "ae", "ß": "ss"}))
+    nfkd = unicodedata.normalize("NFKD", s)
+    ascii_str = nfkd.encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9 ]", " ", ascii_str.lower()).strip()
 
-    req = _normalise(requested)
-    ret = _normalise(returned)
+
+def _artist_matches(requested: str, returned: str) -> bool:
+    """
+    Decide whether a Deezer-returned artist is the artist we asked for.
+
+    Designed against two real failure modes:
+      - "Âme" (fold "ame") must NOT match "Ameli Dot" (substring of a word), nor
+        "The Ame Church International Mass Choir" (one coincidental short token
+        inside a long name).
+      - "Floating Points" must still match "Floating Points feat. X".
+
+    Rules, in order: exact fold wins; shared words count only if they are the
+    majority of BOTH names and at least one is 4+ characters; a substring match
+    is allowed only when the shorter side is itself 4+ characters (so a real
+    single-word artist like "Surgeon" still matches "Surgeon & Lady Starlight",
+    but "ame" cannot match a long unrelated name).
+    """
+    req = _fold(requested)
+    ret = _fold(returned)
     if not req or not ret:
         return False
-    # Accept if either name is a substring of the other, or they share a word.
-    if req in ret or ret in req:
+    if req == ret:
         return True
-    req_words = set(req.split())
-    ret_words = set(ret.split())
-    return bool(req_words & ret_words)
+
+    req_words, ret_words = set(req.split()), set(ret.split())
+    shared = req_words & ret_words
+    if shared:
+        majority = len(shared) >= max(len(req_words), len(ret_words)) / 2
+        substantial = any(len(w) >= 4 for w in shared) or shared == req_words == ret_words
+        if majority and substantial:
+            return True
+
+    shorter, longer = sorted((req, ret), key=len)
+    return len(shorter) >= 4 and shorter in longer
 
 
 def _deezer_search(query: str, limit: int = 5) -> list[dict[str, Any]]:
@@ -154,38 +186,52 @@ def _deezer_search(query: str, limit: int = 5) -> list[dict[str, Any]]:
     return hits
 
 
+def _hit_to_media(hit: dict[str, Any], fallback: bool) -> dict[str, str | bool | None]:
+    """Shape a Deezer hit into the media dict. Deezer is the source of truth:
+    matched_artist/matched_title carry the REAL track so the UI can display
+    exactly what plays, never the LLM's possibly-invented title."""
+    return {
+        "preview_url": hit.get("preview") or None,
+        "deezer_url": hit.get("link") or None,
+        "matched_artist": (hit.get("artist") or {}).get("name") or None,
+        "matched_title": hit.get("title") or None,
+        "deezer_fallback": fallback,
+    }
+
+
+_NO_MATCH: dict[str, str | bool | None] = {
+    "preview_url": None, "deezer_url": None,
+    "matched_artist": None, "matched_title": None, "deezer_fallback": False,
+}
+
+
 def _enrich_track_with_deezer(
     artist: str, title: str
 ) -> dict[str, str | bool | None]:
     """
-    Return {preview_url, deezer_url, deezer_fallback} for an artist+title pair.
+    Resolve an artist+title to a REAL Deezer track. Deezer is the source of
+    truth: the returned matched_artist/matched_title are what the UI displays,
+    so the shown title always matches the preview and the links.
 
     Strategy:
-      1. Skip exact search for generic titles ("Untitled", "Unknown", etc.) --
-         Deezer returns whatever matches the title, almost never the right track.
-      2. For real titles, search "{artist} {title}" and pick the first hit whose
-         artist name matches the requested artist. If no artist-verified hit
-         exists, treat as a miss.
-      3. Fall back to artist-only search so the user still gets a real 30s
-         sample of that artist's actual sound.
-
-    deezer_fallback is True when step 3 was used, so the UI can label the
-    preview "similar track by {artist}" instead of implying it is the exact track.
+      1. Skip exact search for generic titles ("Untitled", "Unknown", etc.).
+      2. Precise advanced query: artist:"X" track:"Y". Falls back to free-text
+         "X Y" if the precise query misses. Pick the first hit whose artist
+         actually matches (folded, accent-aware comparison).
+      3. If no exact track is found, fall back to the artist's top track so the
+         user still hears that artist's real sound. deezer_fallback=True so the
+         UI labels it honestly.
     """
     title_key = re.sub(r"[^a-z0-9]", "", title.lower())
     skip_exact = title_key in _GENERIC_TITLES or not title_key
 
     if not skip_exact:
-        hits = _deezer_search(f"{artist} {title}")
+        hits = _deezer_search(f'artist:"{artist}" track:"{title}"')
+        if not hits:
+            hits = _deezer_search(f"{artist} {title}")
         for hit in hits:
-            returned_artist = (hit.get("artist") or {}).get("name", "")
-            if _artist_matches(artist, returned_artist):
-                return {
-                    "preview_url": hit.get("preview") or None,
-                    "deezer_url": hit.get("link") or None,
-                    "deezer_fallback": False,
-                }
-        # No artist-verified hit -- log and fall through
+            if _artist_matches(artist, (hit.get("artist") or {}).get("name", "")):
+                return _hit_to_media(hit, fallback=False)
         if hits:
             logger.info(
                 "deezer_artist_mismatch",
@@ -194,16 +240,12 @@ def _enrich_track_with_deezer(
             )
 
     time.sleep(_DEEZER_PAUSE_SECONDS)
-    artist_hits = _deezer_search(artist)
-    if artist_hits:
-        hit = artist_hits[0]
-        return {
-            "preview_url": hit.get("preview") or None,
-            "deezer_url": hit.get("link") or None,
-            "deezer_fallback": True,
-        }
+    artist_hits = _deezer_search(f'artist:"{artist}"') or _deezer_search(artist)
+    for hit in artist_hits:
+        if _artist_matches(artist, (hit.get("artist") or {}).get("name", "")):
+            return _hit_to_media(hit, fallback=True)
 
-    return {"preview_url": None, "deezer_url": None, "deezer_fallback": False}
+    return dict(_NO_MATCH)
 
 
 def _parse_llm_setlist_json(raw_text: str) -> dict[str, Any] | None:
@@ -265,7 +307,12 @@ def build_setlist(seed: str, n: int = 8) -> dict[str, Any]:
                     "energy": int, 1 (ambient) to 10 (peak saturation),
                     "preview_url": str | None, Deezer 30s MP3, None if unavailable,
                     "deezer_url": str | None, Deezer track page, None if unavailable,
-                    "youtube_url": str, YouTube search link (always present),
+                    "deezer_fallback": bool, True when this is the artist's top
+                        track because the exact title was not on Deezer,
+                    "youtube_url": str, direct video link when confirmed via the
+                        Data API, else a search link (always present),
+                    "youtube_verified": bool, True when youtube_url is a direct
+                        video link rather than a search,
                 },
                 ...
             ],
@@ -315,20 +362,31 @@ def build_setlist(seed: str, n: int = 8) -> dict[str, Any]:
             continue # skip malformed tracks rather than emit garbage
 
         media = _enrich_track_with_deezer(artist, track_title)
-        video_id = _youtube_video_id(artist, track_title)
+
+        # Deezer is the source of truth: display the real track we found so the
+        # title, preview, and links always agree. Fall back to the LLM's text
+        # only when nothing was found at all.
+        display_artist = str(media.get("matched_artist") or artist)
+        display_title = str(media.get("matched_title") or track_title)
+
+        # Smart YouTube link: a direct video link when the Data API confirms an
+        # ID (using the real title), otherwise a search link. No iframe.
+        video_id = _youtube_video_id(display_artist, display_title)
+        if video_id:
+            youtube_url = f"https://www.youtube.com/watch?v={video_id}"
+        else:
+            youtube_url = _youtube_search_url(display_artist, display_title)
 
         enriched_tracks.append({
-            "artist": artist,
-            "title": track_title,
+            "artist": display_artist,
+            "title": display_title,
             "reason": reason,
             "energy": energy,
             "preview_url": media["preview_url"],
             "deezer_url": media["deezer_url"],
             "deezer_fallback": bool(media.get("deezer_fallback")),
-            "youtube_url": _youtube_search_url(artist, track_title),
-            "youtube_embed_url": (
-                f"https://www.youtube.com/embed/{video_id}" if video_id else None
-            ),
+            "youtube_url": youtube_url,
+            "youtube_verified": bool(video_id),
         })
         energy_arc.append(energy)
 

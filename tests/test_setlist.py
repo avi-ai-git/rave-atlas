@@ -33,10 +33,14 @@ def _llm_response(title: str = "Test Set", tracks: list[dict] | None = None) -> 
 
 
 def _deezer_hit() -> Mock:
+    # Artist name must match the requested artist now that enrichment verifies
+    # the returned artist (the default LLM first track is Ben Klock / Subzero).
     resp = Mock()
     resp.json.return_value = {"data": [{
         "preview": "https://cdns-preview.dzcdn.net/stream/c-123.mp3",
         "link": "https://www.deezer.com/track/123",
+        "title": "Subzero",
+        "artist": {"name": "Ben Klock"},
     }]}
     resp.raise_for_status = Mock()
     return resp

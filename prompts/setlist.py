@@ -69,9 +69,14 @@ is a reason.
 
 - **Choose real, documented artists with releases on relevant labels.** Prefer \
 artists documented on Klockworks, Ostgut Ton, Tresor, Innervisions, Rush Hour, \
-Internasjonal, SUED, Livity Sound, Hemlock, or equivalent labels. Track titles \
-can be real or plausible: accuracy on the title is less critical than a \
-credible artist and a specific reason for their position.
+Internasjonal, SUED, Livity Sound, Hemlock, or equivalent labels.
+
+- **Strongly prefer real track titles you are confident exist.** The set is \
+made playable by resolving each track on Deezer and YouTube, so a real, \
+well-known title resolves to the correct preview and link. When you are unsure \
+of an exact title, choose a different track by that artist that you do know, \
+rather than inventing a title. A credible artist and a specific reason still \
+matter most, but a real title is what makes the set actually playable.
 
 - Do not use em dashes or en dashes in the reasons. Use commas or full stops.
 
