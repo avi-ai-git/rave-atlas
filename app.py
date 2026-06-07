@@ -773,7 +773,8 @@ def _tab_beyond_berlin(settings: dict) -> None:
     )
     max_price = col_price.slider("Max price (€, 0 = no limit)", 0, 80, 0, 5)
 
-    if st.button("Find rave parties on RA", type="primary"):
+    col_search, col_clear = st.columns([3, 1])
+    if col_search.button("Find rave parties on RA", type="primary", use_container_width=True):
         if not city:
             st.error("Pick a city first.")
         elif date_to < date_from:
@@ -793,6 +794,12 @@ def _tab_beyond_berlin(settings: dict) -> None:
                     city=city,
                 )
             st.session_state["intl_results"] = {"city": city, "events": events}
+            st.rerun()
+    # Clear button only shown when results are present; without it there is no
+    # way to dismiss the results and start a fresh search from a clean state.
+    if st.session_state.get("intl_results"):
+        if col_clear.button("Clear results", use_container_width=True):
+            st.session_state["intl_results"] = None
             st.rerun()
 
     res = st.session_state.get("intl_results")
