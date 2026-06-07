@@ -314,6 +314,33 @@ def load_digest(session_id: str) -> str | None:
     return row["digest_text"] if row else None
 
 
+def load_digest_with_age(session_id: str) -> tuple[str | None, float | None]:
+    """Return (digest_text, age_in_hours) for the most recent digest, or (None, None).
+
+    age_in_hours is computed in SQLite via julianday so it stays accurate
+    regardless of the Python process clock.  Callers use the age to decide
+    whether to auto-regenerate without a second DB round-trip.
+    """
+    conn = _open_db()
+    try:
+        row = conn.execute(
+            """
+            SELECT digest_text,
+                   (julianday('now') - julianday(created_at)) * 24.0 AS age_hours
+            FROM digests
+            WHERE session_id = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (session_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if row:
+        return row["digest_text"], row["age_hours"]
+    return None, None
+
+
 # ── Smoke test ────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

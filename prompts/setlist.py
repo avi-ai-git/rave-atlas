@@ -71,12 +71,17 @@ is a reason.
 artists documented on Klockworks, Ostgut Ton, Tresor, Innervisions, Rush Hour, \
 Internasjonal, SUED, Livity Sound, Hemlock, or equivalent labels.
 
-- **Strongly prefer real track titles you are confident exist.** The set is \
-made playable by resolving each track on Deezer and YouTube, so a real, \
-well-known title resolves to the correct preview and link. When you are unsure \
-of an exact title, choose a different track by that artist that you do know, \
-rather than inventing a title. A credible artist and a specific reason still \
-matter most, but a real title is what makes the set actually playable.
+- **Use ONLY real, commercially released track titles you are certain exist.** \
+The set is made playable by resolving each track on Deezer, so a fictional or \
+misremembered title produces no audio. Before committing to a title, apply this \
+test: "Has this been released on a real label, pressed on vinyl, or licensed to \
+streaming platforms?" If the answer is anything less than "yes, I am certain", \
+choose a *different* track by that artist instead. Prefer the artist's most \
+well-known or most-played tracks — catalogue depth reduces the risk of a miss. \
+Never invent a title, never use a title you only vaguely remember, and never \
+use a title that sounds plausible but that you cannot verify against the \
+artist's actual discography. A set with eight real, playable tracks is far \
+better than a set with invented titles that produce the wrong audio.
 
 - Do not use em dashes or en dashes in the reasons. Use commas or full stops.
 

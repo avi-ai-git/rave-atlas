@@ -330,7 +330,10 @@ def build_setlist(seed: str, n: int = 8) -> dict[str, Any]:
     try:
         result = llm_client.chat(
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
+            # Lower temperature than creative tasks: track title accuracy matters
+            # more than variety here. 0.4 still produces varied arc shapes while
+            # keeping the model anchored to its real discography knowledge.
+            temperature=0.4,
         )
     except Exception as exc:
         logger.warning("build_setlist_llm_failed", error=str(exc))
@@ -368,6 +371,14 @@ def build_setlist(seed: str, n: int = 8) -> dict[str, Any]:
         # only when nothing was found at all.
         display_artist = str(media.get("matched_artist") or artist)
         display_title = str(media.get("matched_title") or track_title)
+        is_fallback = bool(media.get("deezer_fallback"))
+
+        # When the Deezer match is a fallback (different track than requested),
+        # preserve the original LLM selection so the UI can show what was
+        # intended alongside what's actually playing. Without this, the reason
+        # text refers to a track that no longer matches the displayed title.
+        llm_artist = artist if is_fallback else None
+        llm_title = track_title if is_fallback else None
 
         # Smart YouTube link: a direct video link when the Data API confirms an
         # ID (using the real title), otherwise a search link. No iframe.
@@ -380,11 +391,13 @@ def build_setlist(seed: str, n: int = 8) -> dict[str, Any]:
         enriched_tracks.append({
             "artist": display_artist,
             "title": display_title,
+            "llm_artist": llm_artist,   # original set pick (None when exact match)
+            "llm_title": llm_title,     # original set pick (None when exact match)
             "reason": reason,
             "energy": energy,
             "preview_url": media["preview_url"],
             "deezer_url": media["deezer_url"],
-            "deezer_fallback": bool(media.get("deezer_fallback")),
+            "deezer_fallback": is_fallback,
             "youtube_url": youtube_url,
             "youtube_verified": bool(video_id),
         })

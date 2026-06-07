@@ -474,8 +474,12 @@ def _render_setlist(sl: dict) -> None:
         rows = []
         for i, t in enumerate(tracks, 1):
             energy = t.get("energy", 5)
+            # Use the original LLM pick for the table when it's a Deezer fallback,
+            # so the table matches what the individual cards show.
+            show_artist = t.get("llm_artist") or t.get("artist", "")
+            show_title = t.get("llm_title") or t.get("title", "")
             rows.append(
-                f"| **{i}** | {t.get('artist', '')} | *{t.get('title', '')}* | "
+                f"| **{i}** | {show_artist} | *{show_title}* | "
                 f"{_energy_bar(energy)} |"
             )
         st.markdown(
@@ -487,10 +491,22 @@ def _render_setlist(sl: dict) -> None:
 
     # ── Playable track cards ──────────────────────────────────────────────────
     for i, t in enumerate(tracks, 1):
+        is_fallback = t.get("deezer_fallback", False)
+        llm_artist = t.get("llm_artist") or ""
+        llm_title = t.get("llm_title") or ""
+
         with st.container(border=True):
             c_num, c_info, c_nrg = st.columns([1, 9, 2])
             c_num.markdown(f"**{i}**")
-            c_info.markdown(f"**{t.get('artist', '')}** · *{t.get('title', '')}*")
+
+            if is_fallback and llm_title:
+                # Show the original set pick prominently; the Deezer substitute
+                # is shown below so the reason (which describes the intended
+                # track) still makes sense.
+                c_info.markdown(f"**{llm_artist}** · *{llm_title}*")
+            else:
+                c_info.markdown(f"**{t.get('artist', '')}** · *{t.get('title', '')}*")
+
             c_nrg.markdown(_energy_bar(t.get("energy", 5)))
 
             if t.get("reason"):
@@ -506,15 +522,19 @@ def _render_setlist(sl: dict) -> None:
                 st.caption(" · ".join(links))
 
             if t.get("preview_url"):
-                if t.get("deezer_fallback"):
+                if is_fallback and llm_title:
+                    # The exact track isn't on Deezer; we found the nearest
+                    # available track by the same artist. Be honest about this.
                     st.caption(
-                        f"30-second preview of another track by "
-                        f"**{t.get('artist', '')}** (exact track not on Deezer, "
-                        f"use the YouTube link for the real one)"
+                        f"Preview: **{t.get('artist', '')}** - *{t.get('title', '')}* "
+                        f"(closest available on Deezer — use YouTube for the original)"
                     )
                 else:
                     st.caption("30-second preview")
                 st.audio(t["preview_url"], format="audio/mp3")
+            elif is_fallback and not t.get("preview_url"):
+                # No preview at all — the artist isn't on Deezer either.
+                st.caption("No Deezer preview available — use the YouTube link above.")
 
 
 # ── Chat message renderer (Weekend / Learn) ───────────────────────────────────
@@ -580,16 +600,53 @@ def _handle_chat_input(tab_key: str, settings: dict, placeholder: str) -> None:
 
 # ── Digest section (Berlin only) ──────────────────────────────────────────────
 
+_DIGEST_STALE_HOURS = 20  # auto-refresh if the stored digest is older than this
+
+
 def _render_digest_section() -> None:
     session_id = st.session_state["session_id"]
-    digest = memory.load_digest(session_id) or memory.load_digest("__global__")
+
+    # Load digest + age for whichever scope has a stored one.
+    digest, age_hours = memory.load_digest_with_age(session_id)
+    if digest is None:
+        digest, age_hours = memory.load_digest_with_age("__global__")
+
+    # Auto-refresh once per browser session when the stored digest is stale.
+    # This covers the reviewer-on-Monday scenario: the Friday digest is >60h
+    # old, so we silently regenerate rather than showing last week's picks.
+    if (
+        digest is not None
+        and age_hours is not None
+        and age_hours > _DIGEST_STALE_HOURS
+        and not st.session_state.get("_digest_auto_refreshed")
+    ):
+        st.session_state["_digest_auto_refreshed"] = True
+        with st.spinner("Refreshing picks for today..."):
+            fresh = generate_digest(session_id)
+        if fresh:
+            digest = fresh
+            age_hours = 0.0
+
     label = "Agent's Top Picks" + ("" if digest else " — tap to generate")
     with st.expander(label, expanded=bool(digest)):
         if digest:
             st.markdown(digest)
+            # Show freshness stamp so the user knows how recent the picks are.
+            if age_hours is not None:
+                if age_hours < 1:
+                    age_str = "just now"
+                elif age_hours < 2:
+                    age_str = "1 hour ago"
+                else:
+                    age_str = f"{int(age_hours)} hours ago"
+                st.caption(f"Updated {age_str} · Tap **Get fresh picks** to regenerate")
         else:
-            st.caption("The agent hasn't picked yet. Hit the button to get AI-curated top events for this weekend, personalised to your taste profile.")
+            st.caption(
+                "The agent hasn't picked yet. Hit the button to get AI-curated "
+                "top events for this weekend, personalised to your taste profile."
+            )
         if st.button("Get fresh picks", key="btn_regen_digest"):
+            st.session_state["_digest_auto_refreshed"] = True  # don't double-fire
             with st.spinner("Fetching Berlin events and writing your picks..."):
                 new_digest = generate_digest(session_id)
             if new_digest:
