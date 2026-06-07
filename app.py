@@ -719,11 +719,56 @@ def _tab_mix_builder(settings: dict) -> None:
         st.rerun()
 
 
+def _parallel_city_search(
+    cities: list[str],
+    date_from: str,
+    date_to: str,
+    filters: dict | None,
+) -> dict[str, list]:
+    """
+    Fetch RA events for every city in the list concurrently.
+    Returns {city: [events]}, preserving all cities (empty list when none found).
+    Cities that error return an empty list silently.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from tools.events import find_events as _find
+
+    results: dict[str, list] = {}
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {
+            executor.submit(_find, date_from, date_to, filters=filters, city=c): c
+            for c in cities
+        }
+        for future in as_completed(futures):
+            c = futures[future]
+            try:
+                results[c] = future.result() or []
+            except Exception:
+                results[c] = []
+    return results
+
+
+# Top RA-active European cities used when "All Europe" is selected without a
+# specific city. Capped at 30 to keep parallel search time under ~15 seconds.
+_RA_HOTSPOTS: list[str] = [
+    "Amsterdam", "London", "Paris", "Barcelona", "Belgrade",
+    "Vienna", "Zurich", "Copenhagen", "Lisbon", "Prague",
+    "Budapest", "Warsaw", "Brussels", "Rotterdam", "Hamburg",
+    "Frankfurt", "Cologne", "Manchester", "Dublin", "Milan",
+    "Tbilisi", "Stockholm", "Oslo", "Helsinki", "Athens",
+    "Istanbul", "Edinburgh", "Glasgow", "Bologna", "Madrid",
+]
+
+
 def _tab_beyond_berlin(settings: dict) -> None:
-    st.info("Live Resident Advisor listings for any European city. Pick a region, city, and date range.", icon="🌍")
+    st.info(
+        "Live Resident Advisor listings for any European city or region. "
+        "Pick a region and optionally narrow to one city.",
+        icon="🌍",
+    )
     st.caption(
         "Best coverage: Amsterdam, Paris, Barcelona, Belgrade, Vienna, Zurich, Copenhagen. "
-        "For Berlin, use Plan Your Night."
+        "Leave City empty to search the whole region. For Berlin, use Plan Your Night."
     )
     st.divider()
 
@@ -735,12 +780,18 @@ def _tab_beyond_berlin(settings: dict) -> None:
         "Region",
         region_names,
         index=0,
-        help="Pick a region to filter the city list.",
+        help="Pick a region. Leave City empty to search all cities in the region.",
     )
     region_cities = config.CITY_REGIONS.get(region) or []
     city_list = region_cities if region_cities else config.AVAILABLE_CITIES
     city_list = [c for c in city_list if c != "Berlin"]
-    city = col_city.selectbox("City", city_list, index=None, placeholder="Select a city...")
+    city = col_city.selectbox(
+        "City (optional)",
+        city_list,
+        index=None,
+        placeholder="All cities in region...",
+        help="Leave empty to search the whole region at once.",
+    )
 
     # ── Date range ────────────────────────────────────────────────────────────
     col_from, col_to = st.columns(2)
@@ -760,14 +811,17 @@ def _tab_beyond_berlin(settings: dict) -> None:
             "Disco", "Electro", "Afro House", "Bass Music",
             "Hardcore", "Industrial", "EBM", "Dark Techno",
         ],
-        help="Filters returned listings by RA's genre tags. Leave empty for all genres.",
+        help="Filters by RA genre tags. When searching a whole region, add a genre to narrow results.",
     )
     max_price = col_price.slider("Max price (€, 0 = no limit)", 0, 80, 0, 5)
 
     col_search, col_clear = st.columns([3, 1])
     if col_search.button("Find rave parties on RA", type="primary", use_container_width=True):
-        if not city:
-            st.error("Pick a city first.")
+        if not city and region == "All Europe" and not genres:
+            st.error(
+                "Too broad: pick a city, select a specific region, or add a genre filter "
+                "before searching all of Europe."
+            )
         elif date_to < date_from:
             st.error("'To' date must be on or after 'From' date.")
         else:
@@ -777,17 +831,52 @@ def _tab_beyond_berlin(settings: dict) -> None:
             if max_price > 0:
                 filters["max_price"] = float(max_price)
             from tools.events import find_events as _find
-            with st.spinner(f"Querying Resident Advisor for {city}..."):
-                events = _find(
-                    date_from.isoformat(),
-                    date_to.isoformat(),
-                    filters=filters or None,
-                    city=city,
+
+            if city:
+                # Single-city search — existing behaviour
+                with st.spinner(f"Querying Resident Advisor for {city}..."):
+                    events = _find(
+                        date_from.isoformat(),
+                        date_to.isoformat(),
+                        filters=filters or None,
+                        city=city,
+                    )
+                st.session_state["intl_results"] = {
+                    "label": city,
+                    "city": city,
+                    "events": events,
+                    "by_city": None,
+                }
+            else:
+                # Region-wide parallel search
+                if region == "All Europe":
+                    cities_to_search = _RA_HOTSPOTS
+                    label = f"All Europe ({', '.join(genres)})" if genres else "All Europe"
+                else:
+                    cities_to_search = city_list  # already excludes Berlin
+                    genre_note = f" ({', '.join(genres)})" if genres else ""
+                    label = f"{region}{genre_note}"
+                n = len(cities_to_search)
+                genre_desc = ", ".join(genres) if genres else "all genres"
+                with st.spinner(f"Searching {n} cities in {region} for {genre_desc}..."):
+                    by_city = _parallel_city_search(
+                        cities_to_search,
+                        date_from.isoformat(),
+                        date_to.isoformat(),
+                        filters or None,
+                    )
+                all_events = sorted(
+                    [e for evts in by_city.values() for e in evts],
+                    key=lambda e: (e.get("date", ""), e.get("start_time", "")),
                 )
-            st.session_state["intl_results"] = {"city": city, "events": events}
+                st.session_state["intl_results"] = {
+                    "label": label,
+                    "city": None,
+                    "events": all_events,
+                    "by_city": by_city,
+                }
             st.rerun()
-    # Clear button only shown when results are present; without it there is no
-    # way to dismiss the results and start a fresh search from a clean state.
+
     if st.session_state.get("intl_results"):
         if col_clear.button("Clear results", use_container_width=True):
             st.session_state["intl_results"] = None
@@ -799,12 +888,31 @@ def _tab_beyond_berlin(settings: dict) -> None:
         st.divider()
         if not events:
             st.info(
-                f"No Resident Advisor listings found for **{res['city']}** in that date range. "
-                "Try widening the dates, or pick a major scene city. "
+                f"No Resident Advisor listings found for **{res['label']}** in that date range. "
+                "Try widening the dates or adding a different genre. "
                 "Amsterdam, Paris, Barcelona, Belgrade, and Zurich tend to have the most listings."
             )
+        elif res.get("by_city"):
+            # Region mode: group by city, sorted by number of events descending
+            cities_with_results = {
+                c: evts for c, evts in res["by_city"].items() if evts
+            }
+            n_cities = len(cities_with_results)
+            st.markdown(
+                f"**{len(events)} parties across {n_cities} {'city' if n_cities == 1 else 'cities'}** "
+                f"in {res['label']} via Resident Advisor"
+            )
+            expand_all = n_cities <= 3
+            for city_name, city_evts in sorted(
+                cities_with_results.items(), key=lambda x: -len(x[1])
+            ):
+                with st.expander(f"{city_name} ({len(city_evts)})", expanded=expand_all):
+                    for evt in city_evts[:15]:
+                        _render_event_card(evt)
         else:
-            st.markdown(f"**{len(events)} rave parties in {res['city']}** via Resident Advisor")
+            # Single-city mode
+            city_label = res.get("city") or res.get("label", "")
+            st.markdown(f"**{len(events)} rave parties in {city_label}** via Resident Advisor")
             for evt in events[:30]:
                 _render_event_card(evt)
 
