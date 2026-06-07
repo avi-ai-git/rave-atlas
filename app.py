@@ -666,7 +666,7 @@ def _tab_weekend(settings: dict) -> None:
             preview_names = [e.get("name", "") for e in events[:3] if e.get("name")]
             preview = ", ".join(preview_names) + ("..." if len(events) > 3 else "")
             col_info, col_btn = st.columns([3, 1])
-            col_info.info(f"Browsing **{len(events)} parties** — {preview}", icon="🗂️")
+            col_info.info(f"Browsing **{len(events)} parties**: {preview}", icon="🗂️")
             if col_btn.button("Discuss these events", key="btn_discuss_events"):
                 event_lines = "\n".join(
                     f"- {e.get('name','')} at {e.get('venue','')} ({e.get('date_label','')}, {e.get('price','')})"
@@ -687,11 +687,7 @@ def _tab_weekend(settings: dict) -> None:
 
 
 def _tab_learn(settings: dict) -> None:
-    st.info("Ask about genres, labels, scene history, rave culture, or harm reduction. This tab is purely for learning — for finding real events, use the Plan Your Night tab.", icon="📖")
-    st.caption(
-        "Answers are grounded in the curated knowledge base. When something falls outside "
-        "it, the agent searches the web and tells you so."
-    )
+    st.info("Genres, labels, scene history, rave culture, harm reduction. For finding real events, go to Plan Your Night.", icon="📖")
     st.divider()
     _render_chat("learn", "Ask anything about electronic music, Berlin's scene, or rave culture.")
     _handle_chat_input("learn", settings,
@@ -729,10 +725,10 @@ def _tab_mix_builder(settings: dict) -> None:
 
 
 def _tab_beyond_berlin(settings: dict) -> None:
-    st.info("Browse live Resident Advisor listings for any European city. Pick a region, a city, and a date range. No chat, just events.", icon="🌍")
+    st.info("Live Resident Advisor listings for any European city. Pick a region, city, and date range.", icon="🌍")
     st.caption(
         "Best coverage: Amsterdam, Paris, Barcelona, Belgrade, Vienna, Zurich, Copenhagen. "
-        "Smaller cities may return few results. For Berlin recommendations and agent chat, use Raves in Berlin."
+        "For Berlin, use Plan Your Night."
     )
     st.divider()
 
@@ -856,7 +852,7 @@ def main() -> None:
     )
 
     tab_weekend, tab_mix, tab_learn, tab_beyond = st.tabs(
-        ["Plan Your Night", "Rave Set Builder", "Learn the Scene", "Beyond Berlin"]
+        ["Plan Your Night", "Rave Set Builder", "Learn the Scene", "Raves Beyond Berlin"]
     )
     with tab_weekend:
         _tab_weekend(settings)

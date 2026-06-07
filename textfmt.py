@@ -38,17 +38,26 @@ _GLYPHS: dict[str, str] = {
 _GLYPH_RE = re.compile("|".join(re.escape(g) for g in _GLYPHS))
 
 
+# AI slop openers stripped from the start of any agent response.
+# These add zero information and mark the text as machine-generated.
+_SLOP_OPENERS = re.compile(
+    r"^(Certainly|Absolutely|Sure|Of course|Great question|That's a great question"
+    r"|Happy to help|I'd be happy to|I'm happy to|I'll be happy to"
+    r"|Of course,|Sure,|Certainly,|Absolutely,)[!,.]?\s*",
+    re.IGNORECASE,
+)
+
+
 def humanize(text: str) -> str:
     """
-    Return text with house typography enforced.
+    Return text with house typography and tone enforced.
 
-    - Em, en, figure dashes and horizontal bars become a comma plus space when
-      they were used as separators, so "techno, dark and long" reads naturally.
-    - A dash sitting directly between two digits (a range like "130-150") keeps
-      a plain hyphen, since a comma there would be wrong.
-    - Non-breaking hyphens and spaces, curly quotes, ellipses, and zero-width
-      characters are normalised to their plain ASCII equivalents.
-    - Any double spaces or " ," artefacts left by the swaps are tidied up.
+    - Em, en, figure dashes and horizontal bars become a comma plus space.
+    - A dash between two digits (range like "130-150") keeps a plain hyphen.
+    - Non-breaking hyphens and spaces, curly quotes, ellipses, zero-width
+      characters normalised to plain ASCII equivalents.
+    - AI slop openers (Certainly!, Absolutely!, Great question!) stripped.
+    - Any double spaces or " ," artefacts tidied up.
     """
     if not text:
         return text
@@ -57,6 +66,12 @@ def humanize(text: str) -> str:
     text = re.sub(r"(?<=\d)\s*[‒–—―]\s*(?=\d)", "-", text)
 
     text = _GLYPH_RE.sub(lambda m: _GLYPHS[m.group()], text)
+
+    # Strip sycophantic openers.
+    text = _SLOP_OPENERS.sub("", text)
+    # Capitalise the first letter after stripping (opener may have left lowercase).
+    if text:
+        text = text[0].upper() + text[1:]
 
     # Tidy artefacts the comma swap can leave behind.
     text = text.replace(" ,", ",").replace(",,", ",")
