@@ -21,7 +21,8 @@ def weekend_dates() -> dict[str, str]:
     human turn, in addition to build_system_prompt using it here).
 
     Keys: today, this_friday, this_saturday, this_sunday, next_friday,
-          next_saturday, next_sunday.
+          next_saturday, next_sunday, this_month_end, next_month_start,
+          next_month_end.
 
     "this_friday" is the anchor Friday of the current or upcoming weekend:
     - Mon-Thu: the next upcoming Friday
@@ -44,6 +45,21 @@ def weekend_dates() -> dict[str, str]:
     else: # Sunday: two days ago was the anchor Friday
         this_fri = today - timedelta(days=2)
 
+    # Month boundaries — computed via replace()+timedelta so we never call the
+    # date() constructor directly (tests mock date.today() as a _D subclass and
+    # the constructor call would fail on the mock).
+    first_of_this_month = today.replace(day=1)
+    if today.month == 12:
+        next_month_start = first_of_this_month.replace(year=today.year + 1, month=1)
+    else:
+        next_month_start = first_of_this_month.replace(month=today.month + 1)
+    this_month_end = next_month_start - timedelta(days=1)
+    if next_month_start.month == 12:
+        month_after_next = next_month_start.replace(year=next_month_start.year + 1, month=1)
+    else:
+        month_after_next = next_month_start.replace(month=next_month_start.month + 1)
+    next_month_end = month_after_next - timedelta(days=1)
+
     return {
         "today": today.isoformat(),
         "this_friday": this_fri.isoformat(),
@@ -52,6 +68,9 @@ def weekend_dates() -> dict[str, str]:
         "next_friday": (this_fri + timedelta(days=7)).isoformat(),
         "next_saturday": (this_fri + timedelta(days=8)).isoformat(),
         "next_sunday": (this_fri + timedelta(days=9)).isoformat(),
+        "this_month_end": this_month_end.isoformat(),
+        "next_month_start": next_month_start.isoformat(),
+        "next_month_end": next_month_end.isoformat(),
     }
 
 
@@ -103,8 +122,18 @@ before calling find_events:
 - "next Friday / next weekend" → {next_friday} to {next_sunday}
 - "this week" → {today} to {this_sunday}
 - "next week" → {next_friday} to {next_sunday}
+- "this month" → {today} to {this_month_end}
+- "next month" → {next_month_start} to {next_month_end}
+- "in July / in August / in [month name]" → first to last day of that month
 
-NEVER guess, invent, or approximate dates. Use the values above directly as \
+NEVER ask the user to clarify a date. If the phrasing is ambiguous ("sometime \
+in July", "next month", "the next few weeks"), always take the broadest \
+reasonable interpretation, call find_events, and show the results. A full \
+month's results the user can scroll is far more useful than a clarifying \
+question that makes the agent feel broken. If the user wanted a narrower \
+window they will say so in the next message.
+
+NEVER guess, invent, or approximate dates — use the values above directly as \
 date_from and date_to arguments. The user's turn also begins with a short \
 trusted CONTEXT line restating today's date and the resolved weekend range, \
 use it. If the user names a specific date ("15th", "Friday the 20th", \
