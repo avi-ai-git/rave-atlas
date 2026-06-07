@@ -277,18 +277,23 @@ def get_chat_model(
             "HTTP-Referer": "https://github.com/rave-atlas",
             "X-Title": "Rave Atlas",
         },
-        # Pin OpenRouter to a single upstream provider for Anthropic models.
-        # By default OpenRouter load-balances one conversation across Anthropic,
-        # Amazon Bedrock, and Google Vertex; their tool-call IDs (toolu_... vs
-        # toolu_bdrk_...) do not round-trip, so a follow-up turn routed to a
-        # different provider sees orphaned tool_use blocks and Anthropic rejects
-        # the request ("tool_use ids without tool_result blocks"). Pinning keeps
-        # tool-calling consistent within a conversation. Non-Anthropic models
-        # ignore this key.
-        extra_body={
-            "provider": {"order": ["anthropic"], "allow_fallbacks": False}
-        } if model_id.startswith("anthropic/") else None,
+        # Pin each model family to a single upstream provider to keep tool-call
+        # IDs consistent within a conversation. OpenRouter load-balances across
+        # Anthropic/Bedrock/Vertex for Claude, and across OpenAI/Azure for GPT
+        # models; IDs from different backends do not round-trip, causing 400s on
+        # follow-up turns. Google and DeepSeek models route to a single canonical
+        # provider already, so no pin is needed for them.
+        extra_body=_provider_pin(model_id),
     )
+
+
+def _provider_pin(model_id: str) -> dict | None:
+    """Return an OpenRouter provider-pin body for models that need it."""
+    if model_id.startswith("anthropic/"):
+        return {"provider": {"order": ["anthropic"], "allow_fallbacks": False}}
+    if model_id.startswith("openai/"):
+        return {"provider": {"order": ["openai"], "allow_fallbacks": False}}
+    return None
 
 
 if __name__ == "__main__":

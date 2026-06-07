@@ -457,16 +457,27 @@ def run_agent(
         )
     except Exception as exc:
         err_str = str(exc)
-        logger.error("agent_invoke_failed", error=err_str[:400], session_id=session_id)
+        exc_type = type(exc).__name__
+        logger.error(
+            "agent_invoke_failed",
+            error=err_str[:600],
+            exc_type=exc_type,
+            model=model_id,
+            session_id=session_id,
+        )
         # Surface a hint when the error is recognisable
-        if "404" in err_str or "model" in err_str.lower() and "not found" in err_str.lower():
+        if "404" in err_str or ("model" in err_str.lower() and "not found" in err_str.lower()):
             hint = f"Model '{model_id}' was not found on the provider. Try a different model from the sidebar."
         elif "429" in err_str or "rate limit" in err_str.lower():
             hint = "The provider is rate-limiting requests. Wait a moment, then try again."
         elif "401" in err_str or "auth" in err_str.lower() or "api key" in err_str.lower():
             hint = "Authentication failed. Check that your API key is set correctly in the secrets."
+        elif "context" in err_str.lower() and ("length" in err_str.lower() or "limit" in err_str.lower()):
+            hint = f"The conversation is too long for {model_id}. Clear chat history and try again."
+        elif "tool" in err_str.lower() and ("id" in err_str.lower() or "result" in err_str.lower()):
+            hint = f"Tool-call routing error with {model_id}. Clear chat history and try again."
         else:
-            hint = "The agent encountered an error mid-run. Please try again, if it keeps happening, switch to a different model from the sidebar."
+            hint = f"The agent hit an error ({exc_type}). Clear chat history or switch to a different model."
         return _blocked(model_id, hint)
 
     messages = result.get("messages", []) if isinstance(result, dict) else []
