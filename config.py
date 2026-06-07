@@ -314,6 +314,12 @@ SERPER_API_KEY: str = os.environ.get("SERPER_API_KEY", "")
 # Get a key at console.cloud.google.com -> YouTube Data API v3 (free: 10k units/day;
 # one search = 100 units, so a 16-track set costs 1600 units).
 YOUTUBE_API_KEY: str = os.environ.get("YOUTUBE_API_KEY", "")
+# Optional. When set, the set builder fetches real BPM, musical key, and Camelot
+# wheel position for every track via the Spotify Audio Features API.
+# Free Spotify developer account: developer.spotify.com -> create an app ->
+# copy Client ID and Client Secret. Client Credentials flow only — no user login.
+SPOTIFY_CLIENT_ID: str = os.environ.get("SPOTIFY_CLIENT_ID", "")
+SPOTIFY_CLIENT_SECRET: str = os.environ.get("SPOTIFY_CLIENT_SECRET", "")
 # Mistral's OpenAI-compatible endpoint. The same MISTRAL_API_KEY powers both the
 # safety moderation call (safety.py) and Mistral Large as a selectable chat model.
 MISTRAL_BASE_URL: str = os.environ.get(

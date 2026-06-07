@@ -53,7 +53,7 @@ import config
 import memory
 from agent import run_agent
 from automation.weekend_digest import generate_digest, get_scheduler
-from tools.setlist import build_setlist
+from tools.setlist import build_setlist, camelot_compat
 
 
 # ── Theme polish (CSS) ────────────────────────────────────────────────────────
@@ -467,42 +467,50 @@ def _render_setlist(sl: dict) -> None:
     st.markdown(f"### {sl.get('title', 'Set')}")
     arc = sl.get("energy_arc", [])
     if arc:
-        st.caption(f"Arc: **{' → '.join(str(e) for e in arc)}** ({len(tracks)} tracks, ~{len(tracks) * 4} min)")
+        st.caption(
+            f"Arc: **{' → '.join(str(e) for e in arc)}** "
+            f"({len(tracks)} tracks, ~{len(tracks) * 4} min)"
+        )
 
-    # ── Summary table (quick overview at a glance) ────────────────────────────
+    # Check whether any track has Spotify data so we know which columns to show.
+    has_bpm = any(t.get("bpm") for t in tracks)
+
+    # ── Summary table ─────────────────────────────────────────────────────────
     with st.expander("Track list at a glance", expanded=True):
         rows = []
         for i, t in enumerate(tracks, 1):
             energy = t.get("energy", 5)
-            # Use the original LLM pick for the table when it's a Deezer fallback,
-            # so the table matches what the individual cards show.
             show_artist = t.get("llm_artist") or t.get("artist", "")
             show_title = t.get("llm_title") or t.get("title", "")
-            rows.append(
-                f"| **{i}** | {show_artist} | *{show_title}* | "
-                f"{_energy_bar(energy)} |"
+            row = (
+                f"| **{i}** | {show_artist} | *{show_title}* | {_energy_bar(energy)} |"
             )
-        st.markdown(
-            "| # | Artist | Track | Energy |\n"
-            "|---|--------|-------|--------|\n"
-            + "\n".join(rows),
-            unsafe_allow_html=False,
-        )
+            if has_bpm:
+                bpm_cell = str(t["bpm"]) if t.get("bpm") else ""
+                key_cell = t.get("camelot") or ""
+                row += f" {bpm_cell} | {key_cell} |"
+            rows.append(row)
+
+        header = "| # | Artist | Track | Energy |"
+        sep    = "|---|--------|-------|--------|"
+        if has_bpm:
+            header += " BPM | Key |"
+            sep    += "-----|-----|"
+        st.markdown(header + "\n" + sep + "\n" + "\n".join(rows), unsafe_allow_html=False)
 
     # ── Playable track cards ──────────────────────────────────────────────────
     for i, t in enumerate(tracks, 1):
         is_fallback = t.get("deezer_fallback", False)
-        llm_artist = t.get("llm_artist") or ""
-        llm_title = t.get("llm_title") or ""
+        llm_artist  = t.get("llm_artist") or ""
+        llm_title   = t.get("llm_title") or ""
 
         with st.container(border=True):
             c_num, c_info, c_nrg = st.columns([1, 9, 2])
             c_num.markdown(f"**{i}**")
 
             if is_fallback and llm_title:
-                # Show the original set pick prominently; the Deezer substitute
-                # is shown below so the reason (which describes the intended
-                # track) still makes sense.
+                # Show the original LLM pick as the headline so the reason still
+                # makes sense. The Deezer substitute appears in the preview label.
                 c_info.markdown(f"**{llm_artist}** · *{llm_title}*")
             else:
                 c_info.markdown(f"**{t.get('artist', '')}** · *{t.get('title', '')}*")
@@ -512,7 +520,19 @@ def _render_setlist(sl: dict) -> None:
             if t.get("reason"):
                 st.caption(t["reason"])
 
-            links = []
+            # BPM + Camelot line (only shown when Spotify data is present)
+            meta_parts: list[str] = []
+            if t.get("bpm"):
+                meta_parts.append(f"{t['bpm']} BPM")
+            if t.get("camelot"):
+                key_label = t.get("key_name") or ""
+                meta_parts.append(
+                    t["camelot"] + (f" ({key_label})" if key_label else "")
+                )
+            if meta_parts:
+                st.caption(" · ".join(meta_parts))
+
+            links: list[str] = []
             if t.get("deezer_url"):
                 links.append(f"[Deezer ↗]({t['deezer_url']})")
             if t.get("youtube_url"):
@@ -523,8 +543,6 @@ def _render_setlist(sl: dict) -> None:
 
             if t.get("preview_url"):
                 if is_fallback and llm_title:
-                    # The exact track isn't on Deezer; we found the nearest
-                    # available track by the same artist. Be honest about this.
                     st.caption(
                         f"Preview: **{t.get('artist', '')}** - *{t.get('title', '')}* "
                         f"(closest available on Deezer — use YouTube for the original)"
@@ -533,8 +551,23 @@ def _render_setlist(sl: dict) -> None:
                     st.caption("30-second preview")
                 st.audio(t["preview_url"], format="audio/mp3")
             elif is_fallback and not t.get("preview_url"):
-                # No preview at all — the artist isn't on Deezer either.
                 st.caption("No Deezer preview available — use the YouTube link above.")
+
+        # ── Transition indicator between adjacent tracks ───────────────────────
+        # Only shown when both tracks have Camelot data from Spotify.
+        if i < len(tracks):
+            next_t = tracks[i]   # tracks is 0-indexed; tracks[i] is the i+1-th entry
+            this_cam = t.get("camelot")
+            next_cam = next_t.get("camelot")
+            if this_cam and next_cam:
+                compat = camelot_compat(this_cam, next_cam)
+                if compat == "perfect":
+                    badge = "🟢 Same key"
+                elif compat == "compatible":
+                    badge = "🟡 Compatible"
+                else:
+                    badge = "🔴 Key clash"
+                st.caption(f"&nbsp;&nbsp;&nbsp;↕ {this_cam} → {next_cam} · {badge}")
 
 
 # ── Chat message renderer (Weekend / Learn) ───────────────────────────────────
