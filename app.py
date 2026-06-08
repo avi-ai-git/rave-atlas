@@ -500,6 +500,23 @@ def _energy_bar(energy: int) -> str:
     return "█" * filled + "░" * empty + f" {energy}/10"
 
 
+_ROLE_EMOJI: dict[str, str] = {
+    "opener":     "🌅",
+    "build":      "📈",
+    "peak":       "🔥",
+    "sustain":    "⚡",
+    "resolution": "🌊",
+    "closer":     "🌙",
+}
+
+
+def _role_badge(role: str) -> str:
+    """Return a short emoji+label string for a track's arc role."""
+    role_lower = role.lower().strip()
+    emoji = _ROLE_EMOJI.get(role_lower, "")
+    return f"{emoji} {role.capitalize()}" if role_lower else ""
+
+
 def _render_setlist(sl: dict) -> None:
     tracks = sl.get("tracks", [])
     if not tracks:
@@ -514,6 +531,11 @@ def _render_setlist(sl: dict) -> None:
             f"({len(tracks)} tracks, ~{len(tracks) * 4} min)"
         )
 
+    # Set story — the 2-3 sentence arc narrative from Pass 2
+    story = sl.get("set_story", "")
+    if story:
+        st.info(story, icon="🎧")
+
     # ── Summary table ─────────────────────────────────────────────────────────
     with st.expander("Track list at a glance", expanded=True):
         rows = []
@@ -521,12 +543,15 @@ def _render_setlist(sl: dict) -> None:
             energy = t.get("energy", 5)
             show_artist = t.get("llm_artist") or t.get("artist", "")
             show_title = t.get("llm_title") or t.get("title", "")
+            role = _role_badge(t.get("role", ""))
+            bpm_val = t.get("bpm") or t.get("bpm_target")
+            bpm_str = f"~{bpm_val}" if bpm_val else "-"
             rows.append(
-                f"| **{i}** | {show_artist} | *{show_title}* | {_energy_bar(energy)} |"
+                f"| **{i}** | {show_artist} | *{show_title}* | {role} | {_energy_bar(energy)} | {bpm_str} |"
             )
 
-        header = "| # | Artist | Track | Energy |"
-        sep    = "|---|--------|-------|--------|"
+        header = "| # | Artist | Track | Role | Energy | BPM |"
+        sep    = "|---|--------|-------|------|--------|-----|"
         st.markdown(header + "\n" + sep + "\n" + "\n".join(rows), unsafe_allow_html=False)
 
     # ── Playable track cards ──────────────────────────────────────────────────
@@ -536,7 +561,7 @@ def _render_setlist(sl: dict) -> None:
         llm_title   = t.get("llm_title") or ""
 
         with st.container(border=True):
-            c_num, c_info, c_nrg = st.columns([1, 9, 2])
+            c_num, c_info, c_nrg, c_meta = st.columns([1, 8, 2, 2])
             c_num.markdown(f"**{i}**")
 
             if is_fallback and llm_title:
@@ -547,6 +572,17 @@ def _render_setlist(sl: dict) -> None:
                 c_info.markdown(f"**{t.get('artist', '')}** · *{t.get('title', '')}*")
 
             c_nrg.markdown(_energy_bar(t.get("energy", 5)))
+
+            # Role badge + BPM
+            role_str = _role_badge(t.get("role", ""))
+            bpm_display = t.get("bpm") or t.get("bpm_target")
+            meta_parts = []
+            if role_str:
+                meta_parts.append(role_str)
+            if bpm_display:
+                meta_parts.append(f"~{bpm_display} BPM")
+            if meta_parts:
+                c_meta.caption("  \n".join(meta_parts))
 
             if t.get("reason"):
                 st.caption(t["reason"])

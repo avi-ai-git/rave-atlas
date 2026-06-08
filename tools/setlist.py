@@ -53,22 +53,133 @@ from prompts.setlist import build_artists_prompt, build_tracks_prompt
 logger = get_logger(__name__)
 
 _DEEZER_BASE = "https://api.deezer.com"
+_LASTFM_BASE = "https://ws.audioscrobbler.com/2.0/"
 _YOUTUBE_SEARCH_API = "https://www.googleapis.com/youtube/v3/search"
 _HTTP_TIMEOUT = 8
 
-# Deezer public limit is 50 req / 5 sec. An 8-track set with catalogue lookups
-# is ~24 calls, well under, but a tiny pause keeps us safe under bursts.
+# Deezer public limit is 50 req / 5 sec. A 16-track set with catalogue
+# lookups is ~48 calls; a small pause keeps us safe under bursts.
 _DEEZER_PAUSE_SECONDS = 0.05
 
 # In-memory caches keyed by normalised query string.
 _DEEZER_CACHE: dict[str, list[dict[str, Any]] | None] = {}
 _YOUTUBE_CACHE: dict[str, str | None] = {}
+_LASTFM_CACHE: dict[str, list[str]] = {}
 
 _EMPTY_SETLIST: dict[str, Any] = {
     "title": "Set unavailable",
     "tracks": [],
     "energy_arc": [],
+    "set_story": "",
 }
+
+# Last.fm tags that confirm an artist is in electronic music.
+_ELECTRONIC_TAGS: frozenset[str] = frozenset({
+    "techno", "electronic", "house", "minimal", "deep house", "tech house",
+    "ambient", "trance", "psytrance", "drum and bass", "dnb", "dubstep",
+    "electronica", "industrial", "ebm", "idm", "experimental", "electro",
+    "acid", "rave", "club", "dance", "detroit techno", "berlin techno",
+    "uk garage", "bass", "hypnotic", "dark techno", "melodic techno",
+    "progressive house", "acid techno", "dub techno", "hardcore techno",
+    "breakbeat", "garage", "grime", "bass music", "electronic music",
+    "minimal techno", "ambient techno", "drone", "noise", "post-industrial",
+})
+
+# Tags that indicate clearly non-electronic genres.
+_NON_ELECTRONIC_TAGS: frozenset[str] = frozenset({
+    "rock", "metal", "hip hop", "hip-hop", "rap", "country", "folk",
+    "jazz", "classical", "r&b", "soul", "blues", "pop", "punk",
+    "indie", "alternative", "reggae", "ska", "gospel", "rnb",
+    "heavy metal", "death metal", "black metal", "grunge", "hardcore punk",
+})
+
+
+# ── Last.fm helpers ───────────────────────────────────────────────────────────
+
+
+def _lastfm_artist_tags(artist: str) -> list[str]:
+    """
+    Return the top-5 Last.fm tag names for an artist (lowercase).
+    Used for genre verification before including an artist in a set.
+    Returns [] when the API key is absent or the request fails (fail-open).
+    Results are cached in-process.
+    """
+    if not config.LASTFM_API_KEY:
+        return []
+    cache_key = f"tags:{_fold(artist)}"
+    if cache_key in _LASTFM_CACHE:
+        return _LASTFM_CACHE[cache_key]
+    try:
+        resp = requests.get(
+            _LASTFM_BASE,
+            params={
+                "method": "artist.getTopTags",
+                "artist": artist,
+                "api_key": config.LASTFM_API_KEY,
+                "format": "json",
+                "limit": 5,
+            },
+            timeout=_HTTP_TIMEOUT,
+        )
+        resp.raise_for_status()
+        raw = resp.json().get("toptags", {}).get("tag") or []
+        tags = [t["name"].lower() for t in raw[:5]]
+    except Exception as exc:
+        logger.warning("lastfm_tags_failed", artist=artist[:40], error=str(exc))
+        tags = []
+    _LASTFM_CACHE[cache_key] = tags
+    return tags
+
+
+def _lastfm_top_tracks(artist: str, limit: int = 10) -> list[str]:
+    """
+    Return up to `limit` top track titles for an artist from Last.fm.
+    Used as a catalogue fallback when Deezer has no results for an artist.
+    Returns [] on failure (fail-open).
+    """
+    if not config.LASTFM_API_KEY:
+        return []
+    cache_key = f"tracks:{_fold(artist)}"
+    if cache_key in _LASTFM_CACHE:
+        return _LASTFM_CACHE[cache_key]
+    try:
+        resp = requests.get(
+            _LASTFM_BASE,
+            params={
+                "method": "artist.getTopTracks",
+                "artist": artist,
+                "api_key": config.LASTFM_API_KEY,
+                "format": "json",
+                "limit": limit,
+            },
+            timeout=_HTTP_TIMEOUT,
+        )
+        resp.raise_for_status()
+        raw = resp.json().get("toptracks", {}).get("track") or []
+        tracks = [t["name"] for t in raw[:limit] if isinstance(t, dict) and t.get("name")]
+    except Exception as exc:
+        logger.warning("lastfm_tracks_failed", artist=artist[:40], error=str(exc))
+        tracks = []
+    _LASTFM_CACHE[cache_key] = tracks
+    return tracks
+
+
+def _is_electronic_artist(artist: str) -> bool:
+    """
+    Return True if Last.fm confirms this artist belongs to electronic music.
+    Fail-open: returns True when the API key is absent, the artist is unknown,
+    or the request fails. Only rejects when the top tag is clearly non-electronic
+    AND no electronic tags appear anywhere in the top 5.
+    """
+    tags = _lastfm_artist_tags(artist)
+    if not tags:
+        return True  # unknown or unreachable: let it through
+    has_electronic = any(t in _ELECTRONIC_TAGS for t in tags)
+    top_is_non_electronic = bool(tags) and tags[0] in _NON_ELECTRONIC_TAGS
+    if top_is_non_electronic and not has_electronic:
+        logger.info("genre_guard_rejected", artist=artist[:40], top_tags=tags[:3])
+        return False
+    return True
 
 
 # ── Text normalisation ────────────────────────────────────────────────────────
@@ -159,15 +270,19 @@ def _deezer_search(query: str, limit: int = 5) -> list[dict[str, Any]]:
 
 def _fetch_artist_catalogue(artist: str, limit: int = 10) -> list[str]:
     """
-    Return up to `limit` real, distinct track titles for an artist from Deezer.
-    Used between pass 1 and pass 2 to give the model a verified track list.
-    Deduplicates by normalised title so variants like "Subzero" and "SUBZERO"
-    count as one entry.
-    """
-    hits = _deezer_search(f'artist:"{artist}"', limit=limit)
-    if not hits:
-        hits = _deezer_search(artist, limit=limit)
+    Return up to `limit` real, distinct track titles for an artist.
 
+    Strategy:
+      1. Deezer precise query: artist:"X" — strict, no cross-artist contamination.
+         Never falls back to bare text search (which matches unrelated artists).
+      2. If Deezer finds nothing, fall back to Last.fm artist.getTopTracks.
+         Last.fm covers underground/niche artists Deezer misses (many Berlin
+         techno acts have minimal Deezer presence but rich Last.fm histories).
+
+    Deduplicates by normalised title so "Subzero" and "SUBZERO" count as one.
+    """
+    # Step 1: Deezer precise query only — no bare text fallback
+    hits = _deezer_search(f'artist:"{artist}"', limit=limit)
     titles: list[str] = []
     seen: set[str] = set()
     for hit in hits:
@@ -180,25 +295,38 @@ def _fetch_artist_catalogue(artist: str, limit: int = 10) -> list[str]:
             titles.append(raw_title)
             seen.add(norm)
 
+    # Step 2: Last.fm fallback when Deezer found nothing
+    if not titles:
+        lastfm = _lastfm_top_tracks(artist, limit=limit)
+        if lastfm:
+            logger.info("catalogue_from_lastfm", artist=artist[:40], n=len(lastfm))
+        return lastfm
+
     return titles
 
 
-def _hit_to_media(hit: dict[str, Any], fallback: bool) -> dict[str, str | bool | None]:
+def _hit_to_media(hit: dict[str, Any], fallback: bool) -> dict[str, str | bool | int | None]:
     """Shape a Deezer hit into the media dict. Deezer is the source of truth:
     matched_artist/matched_title carry the REAL track so the UI can display
-    exactly what plays, never the LLM's possibly-invented title."""
+    exactly what plays, never the LLM's possibly-invented title.
+    BPM is extracted when Deezer provides it (often 0 for catalogue tracks;
+    only stored when > 60 to filter out uninitialised zeroes)."""
+    raw_bpm = hit.get("bpm")
+    bpm: int | None = int(raw_bpm) if raw_bpm and int(raw_bpm) > 60 else None
     return {
         "preview_url": hit.get("preview") or None,
         "deezer_url": hit.get("link") or None,
         "matched_artist": (hit.get("artist") or {}).get("name") or None,
         "matched_title": hit.get("title") or None,
         "deezer_fallback": fallback,
+        "bpm": bpm,
     }
 
 
-_NO_MATCH: dict[str, str | bool | None] = {
+_NO_MATCH: dict[str, str | bool | int | None] = {
     "preview_url": None, "deezer_url": None,
     "matched_artist": None, "matched_title": None, "deezer_fallback": False,
+    "bpm": None,
 }
 
 
@@ -239,7 +367,9 @@ def _enrich_track_with_deezer(
             )
 
     time.sleep(_DEEZER_PAUSE_SECONDS)
-    artist_hits = _deezer_search(f'artist:"{artist}"') or _deezer_search(artist)
+    # Fallback: find any track by this artist — precise query only, no bare
+    # text search (bare text matches unrelated artists with the same name).
+    artist_hits = _deezer_search(f'artist:"{artist}"')
     for hit in artist_hits:
         if _artist_matches(artist, (hit.get("artist") or {}).get("name", "")):
             return _hit_to_media(hit, fallback=True)
@@ -444,24 +574,34 @@ def build_setlist(seed: str, n: int = 8, model_id: str | None = None) -> dict[st
     if not arc_positions:
         return dict(_EMPTY_SETLIST)
 
-    # ── Deezer catalogue enrichment ───────────────────────────────────────────
-    # Give each arc position a list of real, streamable track titles so the
-    # model in pass 2 selects from a verified menu rather than recalling from
-    # memory.
+    # ── Deezer catalogue enrichment + genre guard ─────────────────────────────
+    # For each arc position: verify the artist is electronic via Last.fm, then
+    # build a verified track catalogue (Deezer precise query, Last.fm fallback).
+    # The genre guard prevents non-electronic artists from contaminating the set
+    # when the LLM drifts or when a short artist name matches the wrong person.
     for pos in arc_positions:
         artist = str(pos.get("artist") or "").strip()
-        if artist:
+        if not artist:
+            pos["available_tracks"] = []
+            continue
+
+        if not _is_electronic_artist(artist):
+            # Last.fm says this is not an electronic artist. Flag it so
+            # build_tracks_prompt can warn the model to substitute.
+            pos["available_tracks"] = []
+            pos["genre_warning"] = True
+            logger.warning("genre_guard_flagged", artist=artist[:40])
+        else:
             catalogue = _fetch_artist_catalogue(artist, limit=10)
             pos["available_tracks"] = catalogue
             logger.info(
                 "artist_catalogue_fetched",
                 artist=artist[:40],
                 n_tracks=len(catalogue),
+                source="deezer" if catalogue else "lastfm_or_empty",
             )
-        else:
-            pos["available_tracks"] = []
 
-    # ── Pass 2: LLM selects tracks from the verified Deezer catalogue ─────────
+    # ── Pass 2: LLM selects tracks from the verified catalogue ────────────────
     tracks_prompt = build_tracks_prompt(title, arc_positions)
     try:
         tracks_result = llm_client.chat(
@@ -480,12 +620,13 @@ def build_setlist(seed: str, n: int = 8, model_id: str | None = None) -> dict[st
 
     title = textfmt.humanize(parsed.get("title") or title)
     raw_tracks: list[dict[str, Any]] = parsed.get("tracks") or []
+    set_story = textfmt.humanize(str(parsed.get("set_story") or "").strip())
 
-    # ── Per-track enrichment: Deezer preview + Spotify features + YouTube ──────
+    # ── Per-track enrichment: Deezer preview + BPM + YouTube ─────────────────
     enriched_tracks: list[dict[str, Any]] = []
     energy_arc: list[int] = []
 
-    for t in raw_tracks:
+    for idx, t in enumerate(raw_tracks):
         artist = str(t.get("artist") or "").strip()
         track_title = str(t.get("title") or "").strip()
         reason = textfmt.humanize(str(t.get("reason") or "").strip())
@@ -499,14 +640,25 @@ def build_setlist(seed: str, n: int = 8, model_id: str | None = None) -> dict[st
         if not artist or not track_title:
             continue
 
-        # Deezer: get preview URL and resolve to the canonical display title.
+        # Pull role and bpm_target from Pass 1 arc positions (same index order).
+        arc_pos = arc_positions[idx] if idx < len(arc_positions) else {}
+        role = str(arc_pos.get("role") or "").strip()
+        bpm_target: int | None = None
+        try:
+            raw_bpm_t = arc_pos.get("bpm_target")
+            if raw_bpm_t:
+                bpm_target = int(raw_bpm_t)
+        except (TypeError, ValueError):
+            pass
+
+        # Deezer: get preview URL, canonical display title, and BPM if available.
         media = _enrich_track_with_deezer(artist, track_title)
         display_artist = str(media.get("matched_artist") or artist)
         display_title = str(media.get("matched_title") or track_title)
         is_fallback = bool(media.get("deezer_fallback"))
+        deezer_bpm: int | None = media.get("bpm")  # type: ignore[assignment]
 
-        # Preserve the original LLM pick when Deezer returned a fallback,
-        # so the UI can show what was intended alongside what plays.
+        # Preserve the original LLM pick when Deezer returned a fallback.
         llm_artist = artist if is_fallback else None
         llm_title = track_title if is_fallback else None
 
@@ -519,16 +671,19 @@ def build_setlist(seed: str, n: int = 8, model_id: str | None = None) -> dict[st
         )
 
         enriched_tracks.append({
-            "artist":          display_artist,
-            "title":           display_title,
-            "llm_artist":      llm_artist,
-            "llm_title":       llm_title,
-            "reason":          reason,
-            "energy":          energy,
-            "preview_url":     media["preview_url"],
-            "deezer_url":      media["deezer_url"],
-            "deezer_fallback": is_fallback,
-            "youtube_url":     youtube_url,
+            "artist":           display_artist,
+            "title":            display_title,
+            "llm_artist":       llm_artist,
+            "llm_title":        llm_title,
+            "reason":           reason,
+            "role":             role,             # opener/build/peak/sustain/resolution/closer
+            "energy":           energy,
+            "bpm":              deezer_bpm,       # from Deezer when available
+            "bpm_target":       bpm_target,       # from Pass 1 arc plan
+            "preview_url":      media["preview_url"],
+            "deezer_url":       media["deezer_url"],
+            "deezer_fallback":  is_fallback,
+            "youtube_url":      youtube_url,
             "youtube_verified": bool(video_id),
         })
         energy_arc.append(energy)
@@ -540,12 +695,14 @@ def build_setlist(seed: str, n: int = 8, model_id: str | None = None) -> dict[st
         n_tracks=len(enriched_tracks),
         n_previews=n_previews,
         energy_arc=energy_arc,
+        has_story=bool(set_story),
     )
 
     return {
-        "title": title,
-        "tracks": enriched_tracks,
+        "title":      title,
+        "tracks":     enriched_tracks,
         "energy_arc": energy_arc,
+        "set_story":  set_story,
     }
 
 

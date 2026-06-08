@@ -306,6 +306,11 @@ CITY_REGIONS: dict[str, list[str]] = {
 
 DISCOGS_TOKEN: str = os.environ.get("DISCOGS_TOKEN", "")
 MISTRAL_API_KEY: str = os.environ.get("MISTRAL_API_KEY", "")
+# Last.fm public API key. Free, no auth beyond the key.
+# Used for genre verification (artist.getTopTags) and catalogue fallback
+# (artist.getTopTracks) when Deezer has no results for an artist.
+# Get one at: https://www.last.fm/api/account/create
+LASTFM_API_KEY: str = os.environ.get("LASTFM_API_KEY", "77e775adf7246932b9a3a17cfbe4fc77")
 # Optional. When set, web_search uses Brave Search as a fallback provider.
 # Get a key at search.brave.com/api (2 k free queries/month).
 BRAVE_SEARCH_API_KEY: str = os.environ.get("BRAVE_SEARCH_API_KEY", "")

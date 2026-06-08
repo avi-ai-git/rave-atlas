@@ -45,6 +45,7 @@ second step using real, verified Deezer tracks.
       "artist": "<exact artist name as it appears on their releases>",
       "role": "<opener|build|peak|sustain|resolution|closer>",
       "energy": <integer 1-10>,
+      "bpm_target": <integer: approximate BPM target for this position. Typical ranges: deep house 118-124, tech house 124-130, techno 130-142, industrial techno 138-148, psytrance 140-150>,
       "reason": "<one line: why this artist belongs at this position>"
     }},
     ...
@@ -108,6 +109,7 @@ choose a different track by that artist that you are certain about.
 
 {{
   "title": "{title}",
+  "set_story": "<2-3 sentences describing the arc: what world this set inhabits, how the energy moves across the set, and what the listener feels at the end versus the start>",
   "tracks": [
     {{
       "artist": "<artist name, exactly as in the arc plan>",
@@ -159,11 +161,22 @@ def build_tracks_prompt(title: str, positions: list[dict]) -> str:
 
         lines.append(f"Position {p} | Role: {role} | Energy: {energy}/10")
         lines.append(f"Artist: {artist}")
-        if available:
+        genre_warning = pos.get("genre_warning", False)
+        if genre_warning:
+            lines.append(
+                "Available on Deezer: (GENRE WARNING: Last.fm does not classify "
+                "this artist as electronic music. Replace this artist with a "
+                "verified Berlin electronic music act in the same role and genre. "
+                "Do not use this artist.)"
+            )
+        elif available:
             lines.append(f"Available on Deezer: {', '.join(available)}")
         else:
             lines.append(
-                "Available on Deezer: (not found — pick a real, certain title)"
+                "Available on Deezer: (not found on Deezer or Last.fm — only use "
+                "this artist if you are 100% certain a specific track title exists "
+                "on streaming platforms. If uncertain, replace with a more "
+                "mainstream artist in the same genre whose tracks you are certain about.)"
             )
         if arc_reason:
             lines.append(f"Arc reason: {arc_reason}")
