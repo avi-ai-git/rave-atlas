@@ -1,7 +1,7 @@
 """
 Tests for the round-3 fixes:
 
-  - _annotate_price: currency is always shown, EUR included; Free / No price
+  - _annotate_price: currency is always shown, EUR included; Free / Price unlisted
   - weekend_dates: returns today + resolved weekend ISO dates
   - web_search: gap-honest, never raises, empty query is ungrounded
   - Mistral model: present in AVAILABLE_MODELS and routes to the mistral provider
@@ -36,8 +36,8 @@ class TestAnnotatePrice:
         )
         assert events_mod._annotate_price("150", "Copenhagen") == "150 kr"
 
-    def test_empty_price_is_no_price_listed(self):
-        assert events_mod._annotate_price("", "Berlin") == "No price listed"
+    def test_empty_price_is_unlisted(self):
+        assert events_mod._annotate_price("", "Berlin") == "Price unlisted"
 
     def test_free_is_free(self):
         assert events_mod._annotate_price("Free", "Berlin") == "Free"

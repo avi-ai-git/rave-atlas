@@ -359,8 +359,9 @@ def _render_event_card(
             head_left.markdown(f"{rank_badge}**{name}**", unsafe_allow_html=True)
 
         # Price always carries its currency now (set in tools/events.py
-        # _annotate_price), and is never blank: it is "Free" or "No price listed".
-        price = evt.get("price") or "No price listed"
+        # _annotate_price): "Free", a real price like "€15", or "Price unlisted"
+        # when RA's API returned no cost field (does not mean the event is free).
+        price = evt.get("price") or "Price unlisted"
         head_right.markdown(f"**{price}**")
 
         meta = _event_meta_line(evt)
@@ -703,24 +704,48 @@ def _tab_weekend(settings: dict) -> None:
             st.info(f"Browsing **{n} parties**: {preview}", icon="🗂️")
             col_picks, col_discuss = st.columns(2)
             if col_picks.button("Get event picks", use_container_width=True, key="btn_get_picks"):
+                # Cap to 15 events to keep the auto-submit under MAX_INPUT_LENGTH.
+                # Omit price when unlisted so the agent doesn't mistake unknown for free.
+                listed = events[:15]
                 event_lines = "\n".join(
-                    f"- {e.get('name','')} at {e.get('venue','')} ({e.get('date_label','')}, {e.get('price','')})"
-                    for e in events
+                    "- {name} at {venue} ({date}{price})".format(
+                        name=e.get("name", ""),
+                        venue=e.get("venue", ""),
+                        date=e.get("date_label", ""),
+                        price=(
+                            f", {e['price']}"
+                            if e.get("price") and e["price"] not in ("Price unlisted",)
+                            else ""
+                        ),
+                    )
+                    for e in listed
                 )
+                more = f"\n(and {n - len(listed)} more)" if n > len(listed) else ""
                 msg = (
-                    f"I've been browsing {n} Berlin parties on RA:\n{event_lines}\n\n"
+                    f"I've been browsing {n} Berlin parties on RA:\n{event_lines}{more}\n\n"
                     "Which of these should I go to and why? Give me your top picks with a short reason "
                     "for each: the sound, the headliners, the venue, what makes it worth going."
                 )
                 st.session_state["auto_submit_weekend"] = msg
                 st.rerun()
             if col_discuss.button("Discuss with agent", use_container_width=True, key="btn_discuss_events"):
+                listed = events[:15]
                 event_lines = "\n".join(
-                    f"- {e.get('name','')} at {e.get('venue','')} ({e.get('date_label','')}, {e.get('price','')})"
-                    for e in events
+                    "- {name} at {venue} ({date}{price})".format(
+                        name=e.get("name", ""),
+                        venue=e.get("venue", ""),
+                        date=e.get("date_label", ""),
+                        price=(
+                            f", {e['price']}"
+                            if e.get("price") and e["price"] not in ("Price unlisted",)
+                            else ""
+                        ),
+                    )
+                    for e in listed
                 )
+                more = f"\n(and {n - len(listed)} more)" if n > len(listed) else ""
                 msg = (
-                    f"I've been browsing {n} Berlin parties on RA. Here's the full list:\n{event_lines}\n\n"
+                    f"I've been browsing {n} Berlin parties on RA. Here's the list:\n{event_lines}{more}\n\n"
                     "Can you help me pick the best one and tell me more about the headliners or the sound?"
                 )
                 st.session_state["auto_submit_weekend"] = msg

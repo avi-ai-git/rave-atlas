@@ -338,7 +338,7 @@ def _annotate_price(cost_str: str, city: str) -> str:
     so a Paris event can come back as the bare "13/16". This function makes the
     price unambiguous:
 
-      - empty / missing -> "No price listed"
+      - empty / missing -> "Price unlisted"
       - free / donation -> "Free"
       - already has a symbol -> trusted, returned unchanged
         or known ISO code
@@ -350,7 +350,7 @@ def _annotate_price(cost_str: str, city: str) -> str:
     symbol = _CURRENCY_SYMBOL.get(currency, currency)
 
     if not cost_str or not cost_str.strip():
-        return "No price listed"
+        return "Price unlisted"
 
     lower = cost_str.lower().strip()
     if "free" in lower or "donation" in lower:
@@ -366,10 +366,10 @@ def _annotate_price(cost_str: str, city: str) -> str:
 
     # Needs at least one digit to be a price. A digit-less value is either a
     # bare currency symbol ("€"), a lone dash ("-"), or stray punctuation that
-    # RA sometimes returns instead of a real price. Show "No price listed"
+    # RA sometimes returns instead of a real price. Show "Price unlisted"
     # rather than a meaningless symbol; keep it only if it carries real words.
     if not re.search(r"\d", cost_str):
-        return cost_str.strip() if re.search(r"[A-Za-z]", cost_str) else "No price listed"
+        return cost_str.strip() if re.search(r"[A-Za-z]", cost_str) else "Price unlisted"
 
     n = cost_str.strip()
     if currency in _SYMBOL_BEFORE:
