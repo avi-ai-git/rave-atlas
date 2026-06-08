@@ -50,6 +50,7 @@ from typing import Any
 import streamlit as st
 
 import config
+import llm_client
 import memory
 from agent import run_agent
 from automation.weekend_digest import generate_digest, get_scheduler
@@ -1104,6 +1105,11 @@ def main() -> None:
     get_scheduler() # local convenience; production automation runs via GitHub Actions
 
     settings = _render_sidebar()
+    # Pin every llm_client.chat() call this rerun to the sidebar-selected model.
+    # This covers compare_events, explain_music internals, and any other tool
+    # that calls llm_client.chat() without an explicit model argument.
+    # build_setlist passes model_id explicitly and that value takes precedence.
+    llm_client.set_session_model(settings["model_id"])
 
     st.title("Berlin Rave Atlas")
     st.caption(

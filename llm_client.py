@@ -38,6 +38,23 @@ _clients: dict[str, openai.OpenAI] = {}
 # ── In-memory response cache (session-scoped) ─────────────────────────────────
 _cache: dict[str, dict] = {}
 
+# ── Session model override ─────────────────────────────────────────────────────
+# Set once per Streamlit rerun by app.py so every llm_client.chat() call that
+# does not pass an explicit model argument uses the sidebar-selected model
+# rather than the hard DEFAULT_MODEL. Automation scripts (no Streamlit session)
+# leave this as None and fall back to DEFAULT_MODEL as before.
+_SESSION_MODEL: str | None = None
+
+
+def set_session_model(model_id: str | None) -> None:
+    """
+    Pin all subsequent llm_client.chat() and get_chat_model() calls in this
+    process to model_id. Call this once per Streamlit rerun right after
+    _render_sidebar() returns. Pass None to clear the override (automation use).
+    """
+    global _SESSION_MODEL
+    _SESSION_MODEL = model_id or None
+
 # ── Error → user-safe message map ─────────────────────────────────────────────
 _ERROR_MESSAGES: dict[type, str] = {
     openai.AuthenticationError: "API key invalid or expired, check your .env file.",
@@ -162,7 +179,7 @@ def chat(
             "latency_ms": int, wall-clock time in milliseconds (0 if cached),
         }
     """
-    model = model or config.DEFAULT_MODEL
+    model = model or _SESSION_MODEL or config.DEFAULT_MODEL
     provider = _provider_for(model)
     key = _cache_key(model, temperature, top_p, messages)
 
@@ -254,7 +271,7 @@ def get_chat_model(
     Used by agent.py to build the LangGraph ReAct agent without duplicating
     provider-routing logic.
     """
-    model_id = model_id or config.DEFAULT_MODEL
+    model_id = model_id or _SESSION_MODEL or config.DEFAULT_MODEL
     provider = _provider_for(model_id)
 
     if provider == "ollama":
