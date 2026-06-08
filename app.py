@@ -833,7 +833,7 @@ def _tab_mix_builder(settings: dict) -> None:
     )
     if seed:
         with st.spinner("Building your set and fetching previews, about 30 seconds for 16 tracks..."):
-            sl = build_setlist(seed=seed, n=16)
+            sl = build_setlist(seed=seed, n=16, model_id=settings["model_id"])
         st.session_state["mix_sets"].append({"seed": seed, "setlist": sl})
         st.rerun()
 

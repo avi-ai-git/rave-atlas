@@ -344,7 +344,7 @@ def _parse_llm_setlist_json(raw_text: str) -> dict[str, Any] | None:
 
 # ── Public tool ───────────────────────────────────────────────────────────────
 
-def build_setlist(seed: str, n: int = 8) -> dict[str, Any]:
+def build_setlist(seed: str, n: int = 8, model_id: str | None = None) -> dict[str, Any]:
     """
     Generate a Berlin-flavoured set list with a deliberate energy arc,
     playable Deezer previews, YouTube links, and (optionally) real BPM and
@@ -396,13 +396,14 @@ def build_setlist(seed: str, n: int = 8) -> dict[str, Any]:
         on LLM failure rather than raising.
     """
     n = max(1, min(int(n), 20))
-    logger.info("build_setlist_start", seed=seed[:80], n=n)
+    logger.info("build_setlist_start", seed=seed[:80], n=n, model=model_id or "default")
 
     # ── Pass 1: LLM plans artists and arc positions ───────────────────────────
     artists_prompt = build_artists_prompt(seed, n)
     try:
         artists_result = llm_client.chat(
             messages=[{"role": "user", "content": artists_prompt}],
+            model=model_id,
             # Moderate temperature: creative arc shapes + real scene knowledge
             temperature=0.5,
         )
@@ -441,6 +442,7 @@ def build_setlist(seed: str, n: int = 8) -> dict[str, Any]:
     try:
         tracks_result = llm_client.chat(
             messages=[{"role": "user", "content": tracks_prompt}],
+            model=model_id,
             # Very low temperature: selecting from a fixed menu, not generating
             temperature=0.2,
         )
