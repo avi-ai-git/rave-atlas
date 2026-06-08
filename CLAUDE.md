@@ -57,7 +57,7 @@ This is a refined build, and the most useful input was the weaknesses earlier ve
 
 **A ReAct agent, not a static chain or plain retrieval.** The app has three task shapes (event lookup, music education, set building) plus cross-cutting enrichment. A static chain fixes the tool path when the code is written; a retrieval-only app can only answer from documents. A ReAct agent reads the message and decides at runtime which tools to call, in what order, and when it has enough to answer. That runtime branching is the whole reason a chain or a plain RAG app cannot solve this well.
 
-**Two surfaces deliberately bypass the agent.** The Rave Set Builder always wants exactly one fully enriched set, and Beyond Berlin always wants exactly one city's listings. Routing a single deterministic call through a ReAct loop adds latency, adds cost, and adds a real failure mode where a small model decides not to call the tool. Calling the function directly is the honest, reliable choice. Picking the right altitude per surface, agent or retrieval or direct call, is the architecture, not a default.
+**Three surfaces deliberately bypass the agent.** Berlin Raves, the Rave Set Builder, and Raves Beyond Berlin each want exactly one well-defined output: a digest plus a raw RA browse, a single fully enriched set, or one city's listings. Routing any of them through a ReAct loop adds latency, adds cost, and adds a real failure mode where a small model decides not to call the tool. Calling the function directly is the honest, reliable choice. Picking the right altitude per surface, agent or retrieval or direct call, is the architecture, not a default.
 
 **LangGraph SqliteSaver for memory.** Streamlit re-runs the whole script on every interaction, so in-memory state resets constantly. The SqliteSaver checkpointer persists conversation threads to disk keyed by session and per tab, so a reload resumes exactly where it left off. The taste profile is a separate concern, a user model that improves with feedback, so it lives in its own SQLite table. Two tables, one file, no extra infrastructure, which is the right weight for a single-user app.
 
@@ -85,8 +85,8 @@ All three, layered on purpose.
 |---|---|---|
 | Prompt engineering | `prompts/` | Shapes every generation: the persona, the few-shot energy-arc examples, the ranking guide. Author-time, single step. |
 | Retrieval (RAG) | `tools/music_kb.py` | Grounds music answers in the curated KB. Used when facts must be sourced, not invented. |
-| Agent (ReAct) | `agent.py`, the Plan Your Night and Learn the Scene tabs | Multi-step reasoning with runtime tool selection. |
-| Direct tool call | the Rave Set Builder and Beyond Berlin tabs | Single, well-defined work where a deterministic call beats asking a model to decide to make it. |
+| Agent (ReAct) | `agent.py`, Your Berlin Guide tab | Multi-step reasoning with runtime tool selection. |
+| Direct tool call | Berlin Raves, Rave Set Builder, and Raves Beyond Berlin tabs | Single, well-defined work where a deterministic call beats asking a model to decide to make it. |
 
 ---
 
@@ -100,7 +100,7 @@ The default runtime model is **Claude Haiku 4.5** on OpenRouter: the fastest and
 
 ```
 berlin-rave-atlas/
-  app.py                  Thin Streamlit UI, four tabs and routing only
+  app.py                  Thin Streamlit UI, four tabs (Your Berlin Guide, Berlin Raves, Rave Set Builder, Raves Beyond Berlin) and routing only
   agent.py                LangGraph ReAct agent assembly + run_agent()
   config.py               All settings from environment, no hard-coded values
   llm_client.py           OpenRouter + Mistral + Ollama client, cache, retry, cost

@@ -14,9 +14,9 @@ The app needs runtime decisions: which tool to call, in what order, and when it 
 
 ---
 
-## Why two surfaces bypass the agent
+## Why three surfaces bypass the agent
 
-The Rave Set Builder always wants exactly one fully enriched set. Raves Beyond Berlin always wants one city's listings. Routing either through the ReAct loop adds three things: latency from the extra model call to decide to invoke the tool, cost from the extra tokens, and a real failure mode where a small model declines to call the tool at all. Calling `build_setlist()` and `find_events()` directly is more reliable and more honest about what each surface is.
+Berlin Raves, Rave Set Builder, and Raves Beyond Berlin each want exactly one well-defined output. Berlin Raves wants an AI digest plus a raw event browse. Rave Set Builder wants a single fully enriched set. Raves Beyond Berlin wants one city's listings. Routing any of them through the ReAct loop adds three things: latency from the extra model call to decide to invoke the tool, cost from the extra tokens, and a real failure mode where a small model declines to call the tool at all. Calling the functions directly is more reliable and more honest about what each surface is.
 
 The rule is: use the agent where runtime branching is the point. Use a direct call where a deterministic function is the right shape for the job.
 
@@ -82,7 +82,7 @@ The result is that the entire track-hallucination class of bugs disappears for D
 
 Streamlit Cloud puts apps to sleep when they have no active users. A cron running inside the Streamlit process would not fire reliably on a sleeping app. The solution is to move the scheduled work entirely outside the app: `automation/weekend_telegram.py` is a standalone Python script that fetches events, formats a reason-first briefing (not a bare list), and sends it to Telegram. The GitHub Actions workflow (`.github/workflows/weekend-digest.yml`) runs it on a Friday morning cron. The app does not need to be awake; the digest fires regardless.
 
-The in-app APScheduler in `automation/weekend_digest.py` still runs during an active session (it generates the digest visible in the "Plan Your Night" tab), but it is not relied on for the scheduled delivery. The two are independent: the cron delivers to Telegram whether the app is open or not, and the in-app digest refreshes when someone actually loads the page.
+The in-app APScheduler in `automation/weekend_digest.py` still runs during an active session (it generates the digest visible in the "Berlin Raves" tab), but it is not relied on for the scheduled delivery. The two are independent: the cron delivers to Telegram whether the app is open or not, and the in-app digest refreshes when someone actually loads the page.
 
 ---
 

@@ -27,11 +27,11 @@ Berlin has the densest electronic music scene on earth, and planning a night in 
 
 Four things, each with its own tab.
 
-**Plan Your Night** is the agent you talk to. Ask "what's on this Friday under 15 euros near Kreuzberg" or "something hypnotic and 90s-influenced tonight" and it fetches live Resident Advisor events, reasons over them against your taste profile, and tells you which nights fit and which do not, with a clean listing and a direct link for every event. It learns from the picks you rate.
+**Your Berlin Guide** is the agent you talk to. Ask what's on this Friday, which night matches your taste, what Berghain's door is actually like, what minimal techno sounds like, the history of Tresor, or how to stay safe on a long night. It fetches live Resident Advisor events, reasons over lineups against your taste profile, pulls artist and label context from the knowledge base, and searches the web when needed. Parties, scene history, genre theory, harm reduction, all in one conversation. It learns from the events you rate.
+
+**Berlin Raves** shows you what's on without a conversation. An AI picks digest at the top surfaces the standout nights for the week. Below that, a raw Resident Advisor browse lets you filter by date, price, and count. No agent, just the listings when you already know what you want.
 
 **Rave Set Builder** builds a tracklist with a deliberate energy arc. Give it a vibe, a time of night, a track count, or a venue, and it returns each track with a function role (opener, build, peak, sustain, resolution, closer), a BPM target, a one-line reason for each position, and a 30-second Deezer preview plus a YouTube link. A Last.fm genre guard rejects non-electronic artists before the catalogue call so the set stays on genre. A two-to-three sentence set story describes the energy narrative across the whole arc. Tracks are grounded in Deezer's real catalogue so the titles are always playable, and the sidebar model selection applies here too.
-
-**Learn the Scene** is the knowledge tab. Ask about genres, Berlin's club history, record labels, DJ technique, door culture, harm reduction, or how a techno track is built. When the knowledge base does not have something, it searches the web and tells you which answer came from where.
 
 **Raves Beyond Berlin** is a direct browse of Resident Advisor events for any European city, by date, genre, price, and area. No agent, just the listings, honestly.
 
@@ -44,13 +44,13 @@ The architecture is the choice of which technique fits each surface, not a singl
 | Technique | Where | Why |
 |---|---|---|
 | Prompt engineering | `prompts/` | Shapes every generation: persona, few-shot energy-arc examples, the ranking guide. Author-time, single step. |
-| Retrieval (RAG) | Learn the Scene | Grounds answers in the curated KB. Used when facts must be sourced, not invented. |
-| Agent (ReAct) | Plan Your Night, Learn the Scene | Multi-step reasoning with runtime tool selection. |
-| Direct tool call | Rave Set Builder, Raves Beyond Berlin | One well-defined job where a deterministic call beats asking a model to decide to make it. |
+| Retrieval (RAG) | Your Berlin Guide | Grounds answers in the curated KB. Used when facts must be sourced, not invented. |
+| Agent (ReAct) | Your Berlin Guide | Multi-step reasoning with runtime tool selection. |
+| Direct tool call | Berlin Raves, Rave Set Builder, Raves Beyond Berlin | One well-defined job where a deterministic call beats asking a model to decide to make it. |
 
 **Why a ReAct agent and not a static chain or plain RAG.** The app has three task shapes plus cross-cutting enrichment. A chain fixes the tool path when the code is written; a retrieval-only app can only answer from documents. The agent reads the message and decides at runtime which tools to call, in what order, and when it has enough to answer. So a question that needs several steps works in one turn: "find events this Friday, tell me about the headliner at the top pick, and build me a warm-up set in that style" runs `find_events`, `enrich_artist`, and `build_setlist` in a single reply.
 
-**Why two tabs deliberately skip the agent.** Rave Set Builder always wants exactly one set, and Beyond Berlin always wants one city's listings. Routing a deterministic call through a ReAct loop only adds latency, cost, and a failure mode where a small model declines to call the tool. Calling the function directly is more reliable and more honest about what the feature is.
+**Why three surfaces deliberately skip the agent.** Berlin Raves, Rave Set Builder, and Raves Beyond Berlin each want exactly one well-defined output. Routing any of them through a ReAct loop only adds latency, cost, and a failure mode where a small model declines to call the tool. Calling the function directly is more reliable and more honest about what each surface is.
 
 ---
 
@@ -93,7 +93,7 @@ agent.py        LangGraph ReAct agent (langchain.agents.create_agent)
 
 **Storage.** ChromaDB vector store with local sentence-transformers embeddings (no embedding API cost), plus SQLite for conversations, taste profile, and digests.
 
-**Observability.** LangSmith traces every LLM call and tool invocation across all four tabs when `LANGCHAIN_TRACING_V2=true`. The `@traceable` decorator covers `llm_client.chat()` (all model calls from every tab), `build_setlist` (Tab 3), `compare_events` (Tab 1), and `explain_music` (Tab 2). Tab 4 has no LLM calls so nothing to trace there.
+**Observability.** LangSmith traces every LLM call and tool invocation across all four tabs when `LANGCHAIN_TRACING_V2=true`. The `@traceable` decorator covers `llm_client.chat()` (all model calls from every tab), `build_setlist` (Rave Set Builder), `compare_events` (Your Berlin Guide), and `explain_music` (Your Berlin Guide). Raves Beyond Berlin has no LLM calls so nothing to trace there.
 
 **Models.** Five across three providers: Claude Haiku 4.5 on OpenRouter is the default, fast and works without any extra configuration. Gemini 2.5 Flash and GPT-4o Mini also route through OpenRouter. Mistral Large reuses the key that already powers the moderation call. GPT-OSS 120B on Ollama Cloud is an open-weights option that proves the same client routes to a third provider unchanged. All five live in `config.py`.
 
