@@ -753,23 +753,29 @@ def _render_digest_section() -> None:
 # ── Berlin raw browse ─────────────────────────────────────────────────────────
 
 def _render_berlin_browse() -> None:
-    st.caption(
-        "Pick a date window and hit Browse to pull live RA listings. "
-        "Use the sort dropdown to reorder. Hit Clear results to reset."
-    )
-    col_count, col_from, col_to, col_browse, col_clear = st.columns([1, 1.5, 1.5, 1.2, 1.2])
-    count = col_count.selectbox("Show", [5, 10, 25, 50], index=1, key="browse_count", label_visibility="collapsed")
+    # Row 1: date range — labeled inputs sit cleanly together
     today = date.today()
+    col_from, col_to = st.columns(2)
     browse_from = col_from.date_input("From", value=today, key="browse_from")
     browse_to = col_to.date_input("To", value=today + timedelta(days=3), key="browse_to")
-    if col_browse.button("Browse", type="primary", key="btn_browse_berlin"):
+
+    # Row 2: count + action buttons, same height (no labels → consistent row)
+    col_count, col_browse, col_clear = st.columns([1, 2, 2])
+    count = col_count.selectbox(
+        "Show", [10, 25, 50], index=0, key="browse_count", label_visibility="collapsed",
+        help="Max results to show",
+    )
+    browse_clicked = col_browse.button(
+        "Browse RA listings", type="primary", key="btn_browse_berlin", use_container_width=True,
+    )
+    if browse_clicked:
         from tools.events import find_events as _find
         with st.spinner("Fetching Berlin events..."):
             events = _find(browse_from.isoformat(), browse_to.isoformat())
         st.session_state["berlin_browse"] = {"events": events[:count], "count": count}
         st.rerun()
     if st.session_state.get("berlin_browse"):
-        if col_clear.button("Clear results", key="btn_clear_berlin"):
+        if col_clear.button("Clear results", key="btn_clear_berlin", use_container_width=True):
             st.session_state["berlin_browse"] = None
             st.rerun()
 
@@ -811,6 +817,7 @@ def _tab_parties(settings: dict) -> None:  # noqa: ARG001
     _render_digest_section()
     st.divider()
     st.markdown("**Browse all parties**")
+    st.caption("Pick a date range, hit Browse RA listings, then sort or clear as needed.")
     _render_berlin_browse()
 
 
