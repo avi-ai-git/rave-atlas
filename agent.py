@@ -465,8 +465,41 @@ def run_agent(
             model=model_id,
             session_id=session_id,
         )
-        # Surface a hint when the error is recognisable
-        if "404" in err_str or ("model" in err_str.lower() and "not found" in err_str.lower()):
+        # ── Recognisable error patterns ───────────────────────────────────────
+        #
+        # 1. tool_use / tool_result mismatch (Anthropic 400).
+        #    Happens when a turn crashes mid-tool-call and the partial state
+        #    gets saved to the SqliteSaver. Every subsequent call on that thread
+        #    fails with the same 400 forever. Fix: wipe the thread and tell the
+        #    user to ask again — the next turn will be clean.
+        if "tool_use" in err_str and "tool_result" in err_str:
+            memory.clear_thread_checkpoint(thread_key)
+            logger.info(
+                "broken_thread_cleared",
+                thread_key=thread_key,
+                session_id=session_id,
+            )
+            hint = (
+                "A previous turn left the conversation in a broken state. "
+                "It has been reset automatically. Please ask your question again "
+                "and it will work normally."
+            )
+        # 2. OpenRouter data-policy 404.
+        #    The selected model (Gemini, GPT-4o Mini, etc.) needs a one-time
+        #    privacy-policy acceptance at openrouter.ai/settings/privacy.
+        #    This is NOT a missing model — the model exists but is blocked by the
+        #    account's data-policy settings.
+        elif "guardrail" in err_str or (
+            "404" in err_str
+            and ("data policy" in err_str.lower() or "privacy" in err_str.lower())
+        ):
+            hint = (
+                f"'{model_id}' needs a one-time privacy setup on OpenRouter: "
+                "go to openrouter.ai/settings/privacy, accept the data policy, "
+                "then try again. Or switch to Claude Haiku (default) in the "
+                "sidebar — it works without any extra configuration."
+            )
+        elif "404" in err_str or ("model" in err_str.lower() and "not found" in err_str.lower()):
             hint = f"Model '{model_id}' was not found on the provider. Try a different model from the sidebar."
         elif "429" in err_str or "rate limit" in err_str.lower():
             hint = "The provider is rate-limiting requests. Wait a moment, then try again."
@@ -474,8 +507,6 @@ def run_agent(
             hint = "Authentication failed. Check that your API key is set correctly in the secrets."
         elif "context" in err_str.lower() and ("length" in err_str.lower() or "limit" in err_str.lower()):
             hint = f"The conversation is too long for {model_id}. Clear chat history and try again."
-        elif "tool" in err_str.lower() and ("id" in err_str.lower() or "result" in err_str.lower()):
-            hint = f"Tool-call routing error with {model_id}. Clear chat history and try again."
         else:
             hint = f"The agent hit an error ({exc_type}). Clear chat history or switch to a different model."
         return _blocked(model_id, hint)

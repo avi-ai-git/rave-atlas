@@ -143,6 +143,35 @@ def get_checkpointer() -> SqliteSaver:
     return _checkpointer
 
 
+def clear_thread_checkpoint(thread_id: str) -> None:
+    """
+    Delete all LangGraph checkpoint data for a given thread.
+
+    Called when a thread is in a broken state — typically a tool_use block
+    with no matching tool_result written to the checkpointer (happens when
+    an agent turn crashes mid-call and the partial state gets persisted).
+    Clearing it lets the next turn start from a clean slate rather than
+    failing forever on the same corrupt state.
+
+    Both checkpoint tables are keyed by thread_id:
+      checkpoints  — the serialised graph state per turn
+      writes       — the individual channel writes within a turn
+    """
+    try:
+        conn = _open_db()
+        conn.execute("DELETE FROM checkpoints WHERE thread_id = ?", (thread_id,))
+        conn.execute("DELETE FROM writes WHERE thread_id = ?", (thread_id,))
+        conn.commit()
+        conn.close()
+        logger.info("thread_checkpoint_cleared", thread_id=thread_id)
+    except Exception as exc:
+        logger.warning(
+            "thread_checkpoint_clear_failed",
+            thread_id=thread_id,
+            error=str(exc),
+        )
+
+
 # ── Taste profile ─────────────────────────────────────────────────────────────
 
 def load_profile(session_id: str) -> dict[str, Any] | None:
