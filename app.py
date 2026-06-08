@@ -482,8 +482,8 @@ def _render_events_block(tool_calls: list[dict], msg_idx: int) -> None:
     ordered = sorted(raw_events, key=sort_key) if ranked_list else raw_events
 
     session_id = st.session_state["session_id"]
-    st.markdown("**Events from Resident Advisor**")
-    for evt in ordered[:8]:
+    st.caption(f"Top {min(5, len(ordered))} picks from Resident Advisor")
+    for evt in ordered[:5]:
         r = rank_by_name.get(evt.get("name"))
         _render_event_card(
             evt,
@@ -681,26 +681,32 @@ _DIGEST_STALE_HOURS = 20  # auto-refresh if the stored digest is older than this
 def _render_digest_section() -> None:
     session_id = st.session_state["session_id"]
 
-    # Load digest + age for whichever scope has a stored one.
-    digest, age_hours = memory.load_digest_with_age(session_id)
-    if digest is None:
-        digest, age_hours = memory.load_digest_with_age("__global__")
+    # User can dismiss the current picks. The flag resets when they regenerate.
+    dismissed = st.session_state.get("_digest_dismissed", False)
 
-    # Auto-refresh once per browser session when the stored digest is stale.
-    # This covers the reviewer-on-Monday scenario: the Friday digest is >60h
-    # old, so we silently regenerate rather than showing last week's picks.
-    if (
-        digest is not None
-        and age_hours is not None
-        and age_hours > _DIGEST_STALE_HOURS
-        and not st.session_state.get("_digest_auto_refreshed")
-    ):
-        st.session_state["_digest_auto_refreshed"] = True
-        with st.spinner("Refreshing picks for today..."):
-            fresh = generate_digest(session_id)
-        if fresh:
-            digest = fresh
-            age_hours = 0.0
+    if dismissed:
+        digest, age_hours = None, None
+    else:
+        # Load digest + age for whichever scope has a stored one.
+        digest, age_hours = memory.load_digest_with_age(session_id)
+        if digest is None:
+            digest, age_hours = memory.load_digest_with_age("__global__")
+
+        # Auto-refresh once per browser session when the stored digest is stale.
+        # This covers the reviewer-on-Monday scenario: the Friday digest is >60h
+        # old, so we silently regenerate rather than showing last week's picks.
+        if (
+            digest is not None
+            and age_hours is not None
+            and age_hours > _DIGEST_STALE_HOURS
+            and not st.session_state.get("_digest_auto_refreshed")
+        ):
+            st.session_state["_digest_auto_refreshed"] = True
+            with st.spinner("Refreshing picks for today..."):
+                fresh = generate_digest(session_id)
+            if fresh:
+                digest = fresh
+                age_hours = 0.0
 
     label = "What's worth going to this week" + ("" if digest else " (generate now)")
     with st.expander(label, expanded=bool(digest)):
@@ -714,30 +720,48 @@ def _render_digest_section() -> None:
                     age_str = "1 hour ago"
                 else:
                     age_str = f"{int(age_hours)} hours ago"
-                st.caption(f"Updated {age_str} · Tap **Get fresh picks** to regenerate")
+                st.caption(f"Updated {age_str}")
+            col_regen, col_clear = st.columns([2, 1])
+            if col_regen.button("Get fresh picks", key="btn_regen_digest"):
+                st.session_state["_digest_dismissed"] = False
+                st.session_state["_digest_auto_refreshed"] = True  # don't double-fire
+                with st.spinner("Fetching Berlin events and writing your picks..."):
+                    new_digest = generate_digest(session_id)
+                if new_digest:
+                    st.rerun()
+                else:
+                    st.warning("Could not generate picks. Resident Advisor or the AI may be busy.")
+            if col_clear.button("Clear picks", key="btn_clear_digest"):
+                st.session_state["_digest_dismissed"] = True
+                st.rerun()
         else:
             st.caption(
                 "The agent hasn't picked yet. Hit the button to get AI-curated "
                 "top events for this weekend, personalised to your taste profile."
             )
-        if st.button("Get fresh picks", key="btn_regen_digest"):
-            st.session_state["_digest_auto_refreshed"] = True  # don't double-fire
-            with st.spinner("Fetching Berlin events and writing your picks..."):
-                new_digest = generate_digest(session_id)
-            if new_digest:
-                st.rerun()
-            else:
-                st.warning("Could not generate picks. Resident Advisor or the AI may be busy.")
+            if st.button("Get fresh picks", key="btn_regen_digest"):
+                st.session_state["_digest_dismissed"] = False
+                st.session_state["_digest_auto_refreshed"] = True  # don't double-fire
+                with st.spinner("Fetching Berlin events and writing your picks..."):
+                    new_digest = generate_digest(session_id)
+                if new_digest:
+                    st.rerun()
+                else:
+                    st.warning("Could not generate picks. Resident Advisor or the AI may be busy.")
 
 
 # ── Berlin raw browse ─────────────────────────────────────────────────────────
 
 def _render_berlin_browse() -> None:
-    col_count, col_from, col_to, col_browse, col_clear = st.columns([1, 1.5, 1.5, 1, 1])
+    st.caption(
+        "Pick a date window and hit Browse to pull live RA listings. "
+        "Use the sort dropdown to reorder. Hit Clear results to reset."
+    )
+    col_count, col_from, col_to, col_browse, col_clear = st.columns([1, 1.5, 1.5, 1.2, 1.2])
     count = col_count.selectbox("Show", [5, 10, 25, 50], index=1, key="browse_count", label_visibility="collapsed")
     today = date.today()
-    browse_from = col_from.date_input("From", value=today, key="browse_from", label_visibility="collapsed")
-    browse_to = col_to.date_input("To", value=today + timedelta(days=3), key="browse_to", label_visibility="collapsed")
+    browse_from = col_from.date_input("From", value=today, key="browse_from")
+    browse_to = col_to.date_input("To", value=today + timedelta(days=3), key="browse_to")
     if col_browse.button("Browse", type="primary", key="btn_browse_berlin"):
         from tools.events import find_events as _find
         with st.spinner("Fetching Berlin events..."):
@@ -745,7 +769,7 @@ def _render_berlin_browse() -> None:
         st.session_state["berlin_browse"] = {"events": events[:count], "count": count}
         st.rerun()
     if st.session_state.get("berlin_browse"):
-        if col_clear.button("Clear", key="btn_clear_berlin"):
+        if col_clear.button("Clear results", key="btn_clear_berlin"):
             st.session_state["berlin_browse"] = None
             st.rerun()
 
@@ -784,14 +808,9 @@ def _tab_guide(settings: dict) -> None:
 
 
 def _tab_parties(settings: dict) -> None:  # noqa: ARG001
-    st.info(
-        "Live Resident Advisor listings for Berlin. Pick your dates, filter by price or genre, "
-        "and see what's on. No chat needed.",
-        icon="🗓️",
-    )
-    st.divider()
     _render_digest_section()
     st.divider()
+    st.markdown("**Browse all parties**")
     _render_berlin_browse()
 
 
