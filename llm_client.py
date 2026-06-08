@@ -25,6 +25,7 @@ import time
 
 import openai
 from langchain_openai import ChatOpenAI
+from langsmith import traceable
 
 import config
 from logging_config import get_logger
@@ -122,6 +123,11 @@ def _user_safe_error(exc: Exception) -> str:
 
 # ── Main chat function ────────────────────────────────────────────────────────
 
+@traceable(
+    run_type="llm",
+    name="llm_client.chat",
+    metadata={"component": "llm_client"},
+)
 def chat(
     messages: list[dict],
     model: str | None = None,

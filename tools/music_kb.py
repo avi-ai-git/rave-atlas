@@ -9,6 +9,8 @@ falls outside the KB.
 
 from __future__ import annotations
 
+from langsmith import traceable
+
 from ingest import get_collection
 from logging_config import get_logger
 
@@ -20,6 +22,11 @@ logger = get_logger(__name__)
 SIMILARITY_THRESHOLD: float = 0.65
 
 
+@traceable(
+    run_type="retriever",
+    name="explain_music",
+    metadata={"tab": "learn_the_scene", "component": "music_kb_tool"},
+)
 def explain_music(
     query: str,
     allowed_doc_types: list[str] | None = None,

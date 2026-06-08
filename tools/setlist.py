@@ -42,6 +42,7 @@ import urllib.parse
 from typing import Any
 
 import requests
+from langsmith import traceable
 
 import config
 import llm_client
@@ -344,6 +345,11 @@ def _parse_llm_setlist_json(raw_text: str) -> dict[str, Any] | None:
 
 # ── Public tool ───────────────────────────────────────────────────────────────
 
+@traceable(
+    run_type="chain",
+    name="build_setlist",
+    metadata={"tab": "rave_set_builder", "component": "setlist_tool"},
+)
 def build_setlist(seed: str, n: int = 8, model_id: str | None = None) -> dict[str, Any]:
     """
     Generate a Berlin-flavoured set list with a deliberate energy arc,
@@ -395,8 +401,26 @@ def build_setlist(seed: str, n: int = 8, model_id: str | None = None) -> dict[st
         Returns {"title": "Set unavailable", "tracks": [], "energy_arc": []}
         on LLM failure rather than raising.
     """
+    import config as _config
     n = max(1, min(int(n), 20))
-    logger.info("build_setlist_start", seed=seed[:80], n=n, model=model_id or "default")
+    _effective_model = model_id or _config.DEFAULT_MODEL
+    logger.info("build_setlist_start", seed=seed[:80], n=n, model=_effective_model)
+
+    # Attach runtime metadata so LangSmith shows which model built each set.
+    # This lets you compare Haiku vs Mistral vs GPT-OSS set quality directly.
+    try:
+        from langsmith.run_helpers import get_current_run_tree
+        _run = get_current_run_tree()
+        if _run is not None:
+            _run.extra = (_run.extra or {})
+            _run.extra["metadata"] = {
+                **(_run.extra.get("metadata") or {}),
+                "model": _effective_model,
+                "seed": seed[:120],
+                "n_tracks": n,
+            }
+    except Exception:
+        pass  # never break the tool over observability
 
     # ── Pass 1: LLM plans artists and arc positions ───────────────────────────
     artists_prompt = build_artists_prompt(seed, n)

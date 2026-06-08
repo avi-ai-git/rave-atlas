@@ -32,6 +32,7 @@ import re
 from typing import Any
 
 import requests
+from langsmith import traceable
 
 import config
 import llm_client
@@ -570,6 +571,11 @@ def find_events(
     return events
 
 
+@traceable(
+    run_type="chain",
+    name="compare_events",
+    metadata={"tab": "plan_your_night", "component": "events_tool"},
+)
 def compare_events(
     events: list[dict[str, Any]],
     taste_profile: dict[str, Any],
@@ -610,6 +616,21 @@ def compare_events(
     if not events:
         logger.info("compare_events_empty_input")
         return {"ranked_events": []}
+
+    # Attach runtime metadata: number of events being ranked, so each
+    # LangSmith trace shows the comparison scope at a glance.
+    try:
+        from langsmith.run_helpers import get_current_run_tree
+        _run = get_current_run_tree()
+        if _run is not None:
+            _run.extra = (_run.extra or {})
+            _run.extra["metadata"] = {
+                **(_run.extra.get("metadata") or {}),
+                "n_events": len(events),
+                "event_names": [e.get("name", "") for e in events[:5]],
+            }
+    except Exception:
+        pass
 
     prompt = build_compare_prompt(events, taste_profile)
 
