@@ -318,6 +318,47 @@ def _chips(items: list[str]) -> str:
     return "".join(f'<span class="ra-chip">{i}</span>' for i in items if i)
 
 
+def _sort_events(events: list[dict], sort_by: str, sort_dir: str) -> list[dict]:
+    """
+    Sort a flat event list by date or price.
+
+    Price-unlisted events (price_numeric=None) always go to the end, regardless
+    of direction, because their cost is unknown — not zero.
+    """
+    reverse = (sort_dir == "Desc")
+    if sort_by == "Price":
+        priced = [e for e in events if e.get("price_numeric") is not None]
+        unlisted = [e for e in events if e.get("price_numeric") is None]
+        return sorted(priced, key=lambda e: e["price_numeric"], reverse=reverse) + unlisted
+    # Date sort
+    return sorted(
+        events,
+        key=lambda e: (e.get("date", ""), e.get("start_time", "")),
+        reverse=reverse,
+    )
+
+
+def _render_sort_controls(prefix: str) -> tuple[str, str]:
+    """
+    Compact sort row above an event list.
+
+    Returns (sort_by, sort_dir) where sort_by is "Date"|"Price"
+    and sort_dir is "Asc"|"Desc".
+    """
+    c1, c2, _ = st.columns([2, 2, 6])
+    sort_by = c1.radio(
+        "Sort by", ["Date", "Price"],
+        horizontal=True,
+        key=f"{prefix}_sort_by",
+    )
+    sort_dir = c2.radio(
+        "Order", ["Asc", "Desc"],
+        horizontal=True,
+        key=f"{prefix}_sort_dir",
+    )
+    return sort_by, sort_dir
+
+
 def _event_meta_line(evt: dict) -> str:
     """One readable 'Sat 6 Jun, 22:30 to 06:00, Venue, Area' line for a card."""
     bits: list[str] = []
@@ -678,7 +719,8 @@ def _render_berlin_browse() -> None:
             st.info("No Resident Advisor listings in that window. Try widening the dates.")
         else:
             st.caption(f"{len(events)} parties on RA. Switch to Chat to discuss any of them with the agent.")
-            for evt in events:
+            sort_by, sort_dir = _render_sort_controls("berlin_browse")
+            for evt in _sort_events(events, sort_by, sort_dir):
                 _render_event_card(evt)
 
 
@@ -979,18 +1021,20 @@ def _tab_beyond_berlin(settings: dict) -> None:
                 f"**{len(events)} parties across {n_cities} {'city' if n_cities == 1 else 'cities'}** "
                 f"in {res['label']} via Resident Advisor"
             )
+            sort_by, sort_dir = _render_sort_controls("beyond_berlin")
             expand_all = n_cities <= 3
             for city_name, city_evts in sorted(
                 cities_with_results.items(), key=lambda x: -len(x[1])
             ):
                 with st.expander(f"{city_name} ({len(city_evts)})", expanded=expand_all):
-                    for evt in city_evts[:15]:
+                    for evt in _sort_events(city_evts, sort_by, sort_dir)[:15]:
                         _render_event_card(evt)
         else:
             # Single-city mode
             city_label = res.get("city") or res.get("label", "")
             st.markdown(f"**{len(events)} rave parties in {city_label}** via Resident Advisor")
-            for evt in events[:30]:
+            sort_by, sort_dir = _render_sort_controls("beyond_berlin")
+            for evt in _sort_events(events, sort_by, sort_dir)[:30]:
                 _render_event_card(evt)
 
 
