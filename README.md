@@ -29,7 +29,7 @@ Four things, each with its own tab.
 
 **Plan Your Night** is the agent you talk to. Ask "what's on this Friday under 15 euros near Kreuzberg" or "something hypnotic and 90s-influenced tonight" and it fetches live Resident Advisor events, reasons over them against your taste profile, and tells you which nights fit and which do not, with a clean listing and a direct link for every event. It learns from the picks you rate.
 
-**Rave Set Builder** builds a tracklist with a deliberate energy arc. Give it a vibe, a time of night, a track count, or a venue, and it returns an artist and title per track with a one-line reason for each position, plus 30-second Deezer previews and YouTube links. Tracks are grounded in Deezer's real catalogue so the titles are always playable.
+**Rave Set Builder** builds a tracklist with a deliberate energy arc. Give it a vibe, a time of night, a track count, or a venue, and it returns each track with a function role (opener, build, peak, sustain, resolution, closer), a BPM target, a one-line reason for each position, and a 30-second Deezer preview plus a YouTube link. A Last.fm genre guard rejects non-electronic artists before the catalogue call so the set stays on genre. A two-to-three sentence set story describes the energy narrative across the whole arc. Tracks are grounded in Deezer's real catalogue so the titles are always playable, and the sidebar model selection applies here too.
 
 **Learn the Scene** is the knowledge tab. Ask about genres, Berlin's club history, record labels, DJ technique, door culture, harm reduction, or how a techno track is built. When the knowledge base does not have something, it searches the web and tells you which answer came from where.
 
@@ -93,7 +93,7 @@ agent.py        LangGraph ReAct agent (langchain.agents.create_agent)
 
 **Storage.** ChromaDB vector store with local sentence-transformers embeddings (no embedding API cost), plus SQLite for conversations, taste profile, and digests.
 
-**Observability.** LangSmith traces every LLM call and tool invocation when `LANGCHAIN_TRACING_V2=true`.
+**Observability.** LangSmith traces every LLM call and tool invocation across all four tabs when `LANGCHAIN_TRACING_V2=true`. The `@traceable` decorator covers `llm_client.chat()` (all model calls from every tab), `build_setlist` (Tab 3), `compare_events` (Tab 1), and `explain_music` (Tab 2). Tab 4 has no LLM calls so nothing to trace there.
 
 **Models.** Five across three providers: Claude Haiku 4.5 on OpenRouter is the default, fast and works without any extra configuration. Gemini 2.5 Flash and GPT-4o Mini also route through OpenRouter. Mistral Large reuses the key that already powers the moderation call. GPT-OSS 120B on Ollama Cloud is an open-weights option that proves the same client routes to a third provider unchanged. All five live in `config.py`.
 
@@ -151,6 +151,7 @@ On first load the app seeds ChromaDB from the knowledge base markdown, which tak
 | `OPENROUTER_API_KEY` | Yes | | OpenRouter key (Claude Haiku default model) |
 | `DISCOGS_TOKEN` | Yes | | Discogs personal access token (artist enrichment) |
 | `MISTRAL_API_KEY` | Yes | | Mistral key (moderation and the Mistral Large model) |
+| `LASTFM_API_KEY` | No | | Last.fm public key (genre guard and catalogue fallback in the set builder) |
 | `LANGSMITH_API_KEY` | No | | LangSmith tracing |
 | `LANGCHAIN_TRACING_V2` | No | `false` | Set `true` to enable LangSmith |
 | `OLLAMA_API_KEY` | No | | Ollama Cloud (the GPT-OSS 120B model) |

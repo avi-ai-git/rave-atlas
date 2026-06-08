@@ -48,7 +48,7 @@ This is a refined build, and the most useful input was the weaknesses earlier ve
 | A single monolithic UI module is untestable | Small modules, each independently importable with a test block | every module |
 | No tests and no logging make regressions invisible | A real pytest suite and structured JSON logging on every call | `tests/`, `logging_config.py` |
 | Lower-bound-only dependency pins drift and break | Compatible-range pins and a committed lockfile | `pyproject.toml`, `uv.lock` |
-| No observability means no insight into cost or latency | LangSmith tracing on every LLM and tool call | `llm_client.py`, `agent.py` |
+| No observability means no insight into cost or latency | LangSmith tracing on every LLM call and key tool call across all four tabs | `llm_client.py`, `agent.py`, `tools/` |
 | Hard-coded models and URLs are brittle | Everything loads from the environment | `config.py` |
 
 ---
@@ -111,13 +111,13 @@ berlin-rave-atlas/
   ingest.py               Heading-aware, overlapped KB chunking into ChromaDB
   prompts/
     system.py             Agent persona, date resolution, tool-routing rules
-    setlist.py            Set-list prompt with few-shot energy-arc examples
+    setlist.py            Set-list prompts: Pass 1 arc schema (role, bpm_target, energy), Pass 2 track selection + set_story
     compare.py            Event-ranking reasoning guide
   tools/
     music_kb.py           explain_music, RAG with allowlist and gap-honesty
     events.py             find_events (RA GraphQL, city-aware) + compare_events
     artists.py            enrich_artist, Discogs primary, MusicBrainz fallback
-    setlist.py            build_setlist, two-pass arc (artist plan + Deezer catalogue grounding), YouTube
+    setlist.py            build_setlist, two-pass arc + Last.fm genre guard + BPM/role/set_story output, Deezer + YouTube
     clubs.py              find_club, deterministic Berlin club registry lookup
     club_registry.py      The Berlin club table (addresses, official links)
     web.py                web_search, keyless DuckDuckGo fallback, gap-honest
@@ -143,7 +143,7 @@ The agent picks among these at runtime.
 2. `find_events` fetches live events from Resident Advisor and returns clean, normalised event data.
 3. `compare_events` ranks fetched events against the taste profile with plain-language reasoning, not numeric scores.
 4. `enrich_artist` pulls labels, genres, and releases from Discogs, falling back to MusicBrainz.
-5. `build_setlist` generates an energy-arc set list in two passes. Pass 1 has the model plan the arc and choose artists (what the model is good at: genre knowledge, scene positioning). Between passes, Deezer is queried for each artist's real streamable catalogue. Pass 2 has the model choose a specific track from that verified list at temperature 0.2 (selection from a fixed menu, not generation). This structure eliminates hallucinated track titles structurally: invented titles are impossible for any artist Deezer knows. Each track is enriched with a 30-second Deezer preview and a YouTube link.
+5. `build_setlist` generates an energy-arc set list in two passes. Pass 1 has the model plan the arc, choose artists, assign a function role (opener, build, peak, sustain, resolution, closer), and estimate a genre-appropriate BPM target per position. Between passes, a Last.fm genre guard rejects any artist whose top tag is non-electronic and who carries no electronic tags in their top five, so only genuine electronic artists reach the catalogue call. Deezer is then queried with an `artist:"X"` precise search; for artists absent from Deezer, Last.fm `artist.getTopTracks` provides a catalogue fallback. Pass 2 has the model select a specific track from that verified list at temperature 0.2 (selection from a fixed menu, not generation) and write a two-to-three sentence set story. This structure eliminates hallucinated track titles structurally. Each track in the output carries: title, artist, role, energy level, BPM (from Deezer if available, otherwise the Pass 1 estimate), a one-line reason, a 30-second Deezer preview, and a YouTube link.
 6. `find_club` looks up a Berlin venue's official site, events page, and address from a curated registry, a deterministic fact lookup rather than a vector search.
 7. `web_search` is the keyless fallback for current facts outside the knowledge base, with results treated as untrusted data.
 
@@ -157,7 +157,7 @@ The `knowledge_base/` markdown is Berlin-deep and music-deep on purpose. An earl
 
 ## 9. Conventions for a future session
 
-- Every setting comes from `config.py`. Do not hard-code a model id, URL, price, or threshold anywhere else.
+- Every setting comes from `config.py`. Do not hard-code a model id, URL, price, threshold, or API key anywhere else. This includes `LASTFM_API_KEY`: the default is baked into `config.py` as a fallback, but the live value must always be read from the environment.
 - Every user-facing string that a model produced must pass through `textfmt.humanize()`. No em dashes or en dashes anywhere, in code, in the UI, or in the knowledge base.
 - Every module keeps its `if __name__ == "__main__"` test block runnable in isolation.
 - Tools return a gap signal rather than inventing data. Preserve that.
