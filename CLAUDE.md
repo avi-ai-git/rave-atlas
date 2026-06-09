@@ -100,7 +100,7 @@ The default runtime model is **Claude Haiku 4.5** on OpenRouter: the fastest and
 
 ```
 berlin-rave-atlas/
-  app.py                  Thin Streamlit UI, four tabs (Your Berlin Guide, Berlin Raves, Rave Set Builder, Raves Beyond Berlin) and routing only
+  app.py                  Thin Streamlit UI, four tabs (Your Berlin Guide, Berlin Raves, Rave Set Builder, Raves Beyond Berlin) and routing only. Contains _FIRST_NIGHT_SEED, _BERGHAIN_SEED, _SUNDAY_SEED, and _SURPRISE_SEEDS (20 entries) for the Set Builder mood cards.
   agent.py                LangGraph ReAct agent assembly + run_agent()
   config.py               All settings from environment, no hard-coded values
   llm_client.py           OpenRouter + Mistral + Ollama client, cache, retry, cost
@@ -158,6 +158,7 @@ The `knowledge_base/` markdown is Berlin-deep and music-deep on purpose. An earl
 ## 9. Conventions for a future session
 
 - Every setting comes from `config.py`. Do not hard-code a model id, URL, price, threshold, or API key anywhere else. This includes `LASTFM_API_KEY`: the default is baked into `config.py` as a fallback, but the live value must always be read from the environment.
+- The Set Builder mood cards (`_FIRST_NIGHT_SEED`, `_BERGHAIN_SEED`, `_SUNDAY_SEED`, `_SURPRISE_SEEDS`) live as module-level constants in `app.py`. They are UI content, not configuration, so they do not belong in `config.py`. All entries in `_SURPRISE_SEEDS` must stay within Berlin's electronic music spectrum: the Last.fm genre guard in `build_setlist` enforces this at the artist level, but the seed text should be honest about the genre too. Do not add seeds for metal, hip-hop, rock, or any non-electronic genre.
 - Every user-facing string that a model produced must pass through `textfmt.humanize()`. No em dashes or en dashes anywhere, in code, in the UI, or in the knowledge base.
 - Every module keeps its `if __name__ == "__main__"` test block runnable in isolation.
 - Tools return a gap signal rather than inventing data. Preserve that.

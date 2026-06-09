@@ -123,6 +123,20 @@ At runtime the default is Claude Haiku 4.5, the cheapest and fastest tier. The u
 
 ---
 
+## Why the Set Builder shows mood cards on an empty state
+
+The Rave Set Builder's chat input asks for a descriptive seed prompt. Writing a good one requires domain knowledge: a prompt like "Hypnotic 130 BPM 2am Berghain" produces a far better set than "techno", but knowing to write that requires knowing what Berghain is, what 130 BPM signals, and what "hypnotic" means in this context. A newcomer to electronic music faces a blank page with no way to judge whether their input will produce anything meaningful.
+
+The mood card UI solves this without touching the tool logic. Three fixed cards cover the three most legible entry points into a Berlin night: a gentle first-night melodic set (accessible, not intense), a peak-time Berghain set (the quintessential Berlin experience), and a Sunday morning Sisyphos comedown (the emotional other side). Each card's label and caption use plain human language, not genre jargon, so a newcomer can self-select honestly. A fourth Surprise Me button picks randomly from a curated list of 20 seeds that span Berlin's electronic spectrum, giving returning users variety without requiring them to think of a new seed every time.
+
+The three seeds and the 20-entry surprise list are module-level constants in `app.py` (`_FIRST_NIGHT_SEED`, `_BERGHAIN_SEED`, `_SUNDAY_SEED`, `_SURPRISE_SEEDS`). They are UI content, not configuration, so they belong in the UI module rather than in `config.py`. All entries stay within Berlin's electronic music territory. The Last.fm genre guard in `build_setlist` enforces electronic-only at the artist level regardless of seed text, but the seeds themselves are written to be honest about the genre so the user-visible seed description matches the set they receive.
+
+The cards only render on an empty state (no sets built yet). Once a set exists, the cards are replaced by the existing session history and the chat input, which is the right interaction mode for a user who already knows enough to write their own prompt. The chat input remains present throughout, so experienced users who want to write their own seed can ignore the cards entirely.
+
+**The alternative rejected:** a single generic random button with no fixed options. This gives newcomers no vocabulary to reason about what they might receive, and removes the implicit teaching that there are distinct phases of a Berlin night (entry, peak, comedown). The three fixed options do work that a single random button cannot: they name and explain the landscape.
+
+---
+
 ## What is not in this project and why
 
 **No multi-user auth.** Profiles and conversation history are per-session, stored locally. Adding multi-user auth would require a Postgres backend and an auth provider. The single-user SQLite model is honest about its scope and the right starting point before multi-tenancy is a real requirement.
