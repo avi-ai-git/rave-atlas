@@ -42,6 +42,7 @@ except ModuleNotFoundError:
     pass
 
 import json
+import random
 import uuid
 from datetime import date, timedelta
 from typing import Any
@@ -821,6 +822,83 @@ def _tab_parties(settings: dict) -> None:  # noqa: ARG001
     _render_berlin_browse()
 
 
+# ── Mood starter seeds (Rave Set Builder) ─────────────────────────────────────
+# These are the seeds behind the three fixed mood cards and the surprise button.
+# All seeds are within Berlin's electronic music spectrum. The Last.fm genre guard
+# in build_setlist rejects non-electronic artists regardless of seed text, so
+# staying clearly on-genre here keeps the user-visible seed description honest too.
+
+_FIRST_NIGHT_SEED = (
+    "First time at a Berlin club. Accessible and welcoming melodic techno intro set, "
+    "11pm start at Watergate, 122-126 BPM. Warm, musical, and not too dark or intense. "
+    "Good for someone new to electronic music who wants to understand the sound."
+)
+
+_BERGHAIN_SEED = (
+    "Peak-time Berghain main floor set, 3am Saturday night. Hypnotic dark industrial "
+    "techno, 132-136 BPM, relentless and focused. Classic Ostgut Ton sound. "
+    "The quintessential Berlin experience."
+)
+
+_SUNDAY_SEED = (
+    "Sunday afternoon outdoor comedown at Sisyphos Hammahalle, 2pm. Slow, warm melodic "
+    "house and ambient techno, 118-124 BPM. Emotional and communal. The crowd coming "
+    "down together after a long Berlin weekend."
+)
+
+_SURPRISE_SEEDS: list[str] = [
+    "Acid techno journey at Tresor Globus, 2am Saturday. Relentless 303 basslines over "
+    "driving kick drums, 130-134 BPM. Classic Berlin underground.",
+    "Deep soulful house opening set at Panorama Bar, Friday midnight. Chicago and Detroit "
+    "roots, 122-125 BPM. The crowd is warming up.",
+    "Minimal hypnotic techno at About Blank garden stage, 4am. Stripped-back and trippy, "
+    "126-128 BPM. Repetitive enough to feel like a meditation.",
+    "Hard industrial warehouse techno at OHM under the S-Bahn arches, Saturday 1am. "
+    "Mechanical and percussive, 134-138 BPM. No compromise.",
+    "Closing set at Berghain Sunday morning 8am. The arc moves from euphoric peak back "
+    "through melodic resolution. The crowd has been dancing for twelve hours.",
+    "Dub techno deep session in a dark Berlin basement, late Saturday night. Atmospheric "
+    "and dubbed-out, 118-122 BPM. Echo and reverb heavy, immersive.",
+    "Afro house and organic electronic set at Salon zur Wilden Renate, midnight Friday. "
+    "Percussive and rhythmic, 124-126 BPM. Warm bodies and polyrhythms.",
+    "EBM and cold electro peak set at Tresor, 2am Saturday. Cold synth lines over "
+    "driving industrial rhythms, 130-133 BPM. Berlin's industrial heritage.",
+    "Melodic deep techno sunrise at Kater Blau, Sunday morning. Cinematic and "
+    "emotional, 124-128 BPM. The sky is getting light outside.",
+    "Dark ambient and experimental techno at a late-night Berlin loft, 5am. Slow and "
+    "immersive, 100-116 BPM. The sound fills the room.",
+    "90s Detroit and Chicago rave classics updated for a modern floor at KitKat, "
+    "Saturday midnight. Warm, soulful, and euphoric, 128-132 BPM.",
+    "Hypnotic minimal techno at Berghain, 5am. Deeply repetitive and trance-inducing, "
+    "128-132 BPM. Every hi-hat matters.",
+    "Progressive melodic house warm-up at Watergate, 10pm Friday. Building slowly from "
+    "deep and introspective to peak, 122-128 BPM.",
+    "Massive peak-time techno at Kraftwerk Berlin, 3am. The industrial cathedral sound "
+    "system, dark and relentless, 134-136 BPM.",
+    "Sunrise ambient techno at Sisyphos garden, Monday morning. Slow and healing, "
+    "110-118 BPM. The weekend is almost over.",
+    "Drexciyan electro and underwater techno at OHM, 1am. Futuristic and aquatic, "
+    "130-133 BPM. Detroit electro meeting Berlin darkness.",
+    "Late-night acid house and acid techno at Tresor, 3am. The Roland TB-303 is the "
+    "protagonist. Hypnotic and relentless, 128-134 BPM.",
+    "Warm deep house and organic techno at Arena Club, Sunday afternoon. "
+    "Community and togetherness, 118-122 BPM. The gentle wind-down.",
+    "Hard techno with industrial noise textures at Berghain, 4am. "
+    "Challenging and rhythmically locked, 136-140 BPM. The deep end.",
+    "Berlin school electronic and kosmische-influenced set, inspired by Klaus Schulze "
+    "and early electronic pioneers, filtered through modern techno production. "
+    "Meditative and slowly evolving.",
+]
+
+
+def _build_from_seed(seed: str, settings: dict) -> None:
+    """Build a set from a pre-written seed and store it in session state."""
+    with st.spinner("Building your set and fetching previews, about 30 seconds for 16 tracks..."):
+        sl = build_setlist(seed=seed, n=16, model_id=settings["model_id"])
+    st.session_state["mix_sets"].append({"seed": seed, "setlist": sl})
+    st.rerun()
+
+
 def _tab_mix_builder(settings: dict) -> None:
     st.info("Describe a slot or mood and get a full 1-hour set with a warm-up to peak arc, 30-second previews, and YouTube links.", icon="🎛️")
     st.caption(
@@ -830,7 +908,48 @@ def _tab_mix_builder(settings: dict) -> None:
     st.divider()
     sets = st.session_state["mix_sets"]
     if not sets:
-        st.info("Describe a slot or a mood below and Berlin Rave Atlas builds you a playable 1-hour set.")
+        st.markdown("**New to electronic music? Pick a mood to start:**")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            with st.container(border=True):
+                st.markdown("**🌱 First night**")
+                st.caption(
+                    "Accessible and melodic. A warm intro to Berlin's sound, "
+                    "not too dark or intense. Good if you are new to all this."
+                )
+                if st.button("Build this set", key="btn_first_night", use_container_width=True):
+                    _build_from_seed(_FIRST_NIGHT_SEED, settings)
+        with col2:
+            with st.container(border=True):
+                st.markdown("**🔥 The real Berlin**")
+                st.caption(
+                    "Peak-time Berghain. Dark, hypnotic, industrial. "
+                    "The thing people fly here for."
+                )
+                if st.button("Build this set", key="btn_berghain", use_container_width=True):
+                    _build_from_seed(_BERGHAIN_SEED, settings)
+        with col3:
+            with st.container(border=True):
+                st.markdown("**🌅 Sunday morning**")
+                st.caption(
+                    "Sisyphos outdoor comedown. Slow, warm, emotional. "
+                    "The other side of Berlin."
+                )
+                if st.button("Build this set", key="btn_sunday", use_container_width=True):
+                    _build_from_seed(_SUNDAY_SEED, settings)
+
+        st.markdown("")
+        col_btn, col_label = st.columns([1, 3])
+        with col_btn:
+            if st.button("🎲 Surprise me", key="btn_surprise", use_container_width=True):
+                _build_from_seed(random.choice(_SURPRISE_SEEDS), settings)
+        with col_label:
+            st.caption(
+                "Picks a random set from across Berlin's electronic spectrum. "
+                "Always on genre, always in the scene."
+            )
+        st.divider()
+        st.caption("Or describe your own slot or mood below:")
     for entry in sets:
         with st.chat_message("user"):
             st.markdown(entry["seed"])
