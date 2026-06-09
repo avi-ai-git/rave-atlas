@@ -88,7 +88,7 @@ agent.py        LangGraph ReAct agent (langchain.agents.create_agent)
     +-- enrich_artist()    Discogs primary, MusicBrainz fallback
     +-- build_setlist()    LLM energy arc + Deezer previews + YouTube links
     +-- find_club()        Deterministic Berlin club registry lookup
-    +-- web_search()       Keyless DuckDuckGo fallback for KB gaps
+    +-- web_search()       Serper (Google) > Brave Search > DuckDuckGo cascade, gap-honest
 ```
 
 **Storage.** ChromaDB vector store with local sentence-transformers embeddings (no embedding API cost), plus SQLite for conversations, taste profile, and digests.
@@ -151,7 +151,9 @@ On first load the app seeds ChromaDB from the knowledge base markdown, which tak
 | `OPENROUTER_API_KEY` | Yes | | OpenRouter key (Claude Haiku default model) |
 | `DISCOGS_TOKEN` | Yes | | Discogs personal access token (artist enrichment) |
 | `MISTRAL_API_KEY` | Yes | | Mistral key (moderation and the Mistral Large model) |
-| `LASTFM_API_KEY` | No | | Last.fm public key (genre guard and catalogue fallback in the set builder) |
+| `LASTFM_API_KEY` | No | | Last.fm public key. Does two jobs in the set builder: genre guard between Pass 1 and Pass 2, and catalogue fallback for artists absent from Deezer. If absent, both are skipped. |
+| `SERPER_API_KEY` | No | | Serper key (Google-backed web search, first in cascade). Gives the strongest search results. |
+| `BRAVE_SEARCH_API_KEY` | No | | Brave Search key (second in cascade). Fires when Serper is not configured. DuckDuckGo runs keyless as the last resort when both are absent. |
 | `LANGSMITH_API_KEY` | No | | LangSmith tracing |
 | `LANGCHAIN_TRACING_V2` | No | `false` | Set `true` to enable LangSmith |
 | `OLLAMA_API_KEY` | No | | Ollama Cloud (the GPT-OSS 120B model) |
@@ -197,7 +199,7 @@ The unit tests run offline with mocked APIs. The retrieval tests run against the
 - **Rate limiting.** A configurable per-session rolling window.
 - **Input validation.** Length bounds, a duplicate-submission guard, whitespace normalisation.
 - **Retrieval allowlists.** explain_music filters by allowlist, closed by default.
-- **Web-search trust boundary.** web_search results are treated as untrusted data by both the code and the prompt, never followed as instructions, and cited when used.
+- **Web-search trust boundary.** web_search tries Serper (Google), then Brave Search, then DuckDuckGo in order. Results from all three are treated as untrusted data by the code and the prompt, never followed as instructions, and cited when used.
 - **Gap-honesty.** Hallucinating events, artists, or facts is blocked by design; every tool returns a gap signal instead.
 
 ---
@@ -211,7 +213,7 @@ The unit tests run offline with mocked APIs. The retrieval tests run against the
 | SQLite is local | Profiles and threads reset on a stateless cloud restart | Firebase or Postgres |
 | ChromaDB seeds at runtime | Roughly a half-minute cold start on first cloud load | Pre-build the vector store or use a hosted vector DB |
 | In-app scheduler cannot run on a sleeping app | The Friday digest would not fire reliably in-process | The Telegram digest runs from a GitHub Actions cron instead |
-| DuckDuckGo web search has no SLA | web_search can return empty under heavy use | Swap in a keyed search provider |
+| DuckDuckGo is the web-search fallback of last resort | Result quality is better with Serper or Brave Search; DuckDuckGo fires only when both keys are absent | Add SERPER_API_KEY for Google results or BRAVE_SEARCH_API_KEY for Brave; DuckDuckGo stays as the zero-config fallback |
 
 ---
 

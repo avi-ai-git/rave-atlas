@@ -137,6 +137,32 @@ The cards only render on an empty state (no sets built yet). Once a set exists, 
 
 ---
 
+## Why web_search uses a three-provider cascade
+
+`web_search` tries three providers in order: Serper (Google-backed, keyed via `SERPER_API_KEY`), Brave Search (keyed via `BRAVE_SEARCH_API_KEY`), DuckDuckGo (keyless). Each is skipped when its key is absent.
+
+Serper returns the strongest results because it queries Google's index directly. Brave Search is a capable independent alternative for cases where Serper is not configured. DuckDuckGo requires no key and runs as the last resort, so a fresh clone works out of the box without any configuration.
+
+This order means result quality improves as you add keys, but the tool never fails with a missing-key error. A fresh clone gets DuckDuckGo. A deployment with `SERPER_API_KEY` set gets Google results. The gap-honesty contract holds regardless of which provider fires: if the call fails or returns nothing useful, `web_search` returns `grounded=False` and the agent says it does not have the information rather than inventing one.
+
+The alternative rejected: a single provider with a required API key. That breaks a fresh clone and creates a hard dependency. A keyless-first design trades some result quality for zero-friction setup, with the quality ceiling available to anyone who adds a key.
+
+---
+
+## Why Last.fm serves two distinct roles in the set builder
+
+Last.fm does two separate jobs in `tools/setlist.py`, and they fire at different points in the two-pass flow.
+
+Between Pass 1 and Pass 2, the genre guard calls `artist.getTopTags` for each artist the model selected. Any artist whose top tag is non-electronic and who carries no electronic tags in their top five is rejected before the catalogue call. This keeps the set on genre regardless of the seed text.
+
+For artists absent from Deezer, `artist.getTopTracks` provides a real track catalogue. Pass 2 then selects from that list the same way it selects from Deezer results: at temperature 0.2, picking from a verified list rather than generating track names from memory.
+
+The two roles are distinct by design. The genre guard runs first and removes artists. The catalogue fallback runs second and adds tracks. They use different Last.fm API methods and serve different purposes. Treating them as one integration would obscure why Last.fm is queried twice for some artists and once for others.
+
+`LASTFM_API_KEY` is optional. If absent, the genre guard is skipped and Deezer is the only catalogue source. The set still builds; it loses the electronic-only enforcement and the fallback for Deezer gaps.
+
+---
+
 ## What is not in this project and why
 
 **No multi-user auth.** Profiles and conversation history are per-session, stored locally. Adding multi-user auth would require a Postgres backend and an auth provider. The single-user SQLite model is honest about its scope and the right starting point before multi-tenancy is a real requirement.
