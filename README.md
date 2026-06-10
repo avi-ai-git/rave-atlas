@@ -88,7 +88,7 @@ agent.py        LangGraph ReAct agent (langchain.agents.create_agent)
     +-- enrich_artist()    Discogs primary, MusicBrainz fallback
     +-- build_setlist()    LLM energy arc + Deezer previews + YouTube links
     +-- find_club()        Deterministic Berlin club registry lookup
-    +-- web_search()       Keyless DuckDuckGo fallback for KB gaps
+    +-- web_search()       Serper > Brave > DuckDuckGo cascade, gap-honest
 ```
 
 **Storage.** ChromaDB vector store with local sentence-transformers embeddings (no embedding API cost), plus SQLite for conversations, taste profile, and digests.
@@ -151,7 +151,9 @@ On first load the app seeds ChromaDB from the knowledge base markdown, which tak
 | `OPENROUTER_API_KEY` | Yes | | OpenRouter key (Claude Haiku default model) |
 | `DISCOGS_TOKEN` | Yes | | Discogs personal access token (artist enrichment) |
 | `MISTRAL_API_KEY` | Yes | | Mistral key (moderation and the Mistral Large model) |
-| `LASTFM_API_KEY` | No | | Last.fm public key (genre guard and catalogue fallback in the set builder) |
+| `LASTFM_API_KEY` | No | | Last.fm public key (genre guard in the set builder + catalogue fallback for artists not on Deezer) |
+| `SERPER_API_KEY` | No | | Serper (Google-backed) key; first-priority web search provider |
+| `BRAVE_SEARCH_API_KEY` | No | | Brave Search key; second-priority web search provider |
 | `LANGSMITH_API_KEY` | No | | LangSmith tracing |
 | `LANGCHAIN_TRACING_V2` | No | `false` | Set `true` to enable LangSmith |
 | `OLLAMA_API_KEY` | No | | Ollama Cloud (the GPT-OSS 120B model) |
@@ -211,7 +213,7 @@ The unit tests run offline with mocked APIs. The retrieval tests run against the
 | SQLite is local | Profiles and threads reset on a stateless cloud restart | Firebase or Postgres |
 | ChromaDB seeds at runtime | Roughly a half-minute cold start on first cloud load | Pre-build the vector store or use a hosted vector DB |
 | In-app scheduler cannot run on a sleeping app | The Friday digest would not fire reliably in-process | The Telegram digest runs from a GitHub Actions cron instead |
-| DuckDuckGo web search has no SLA | web_search can return empty under heavy use | Swap in a keyed search provider |
+| DuckDuckGo web search has no SLA | web_search falls back to DuckDuckGo when neither SERPER_API_KEY nor BRAVE_SEARCH_API_KEY is set, and that fallback can return empty under heavy use | Set SERPER_API_KEY or BRAVE_SEARCH_API_KEY |
 
 ---
 

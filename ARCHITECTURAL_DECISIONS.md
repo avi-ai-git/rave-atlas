@@ -86,6 +86,24 @@ The in-app APScheduler in `automation/weekend_digest.py` still runs during an ac
 
 ---
 
+## Why web_search uses a three-provider cascade instead of a single source
+
+The app needs a web fallback that works in every deployment, from a fresh clone with no API keys to a production setup with paid search access. A single provider forces a choice between the extremes: always require a paid key (breaks out-of-the-box use) or rely only on a keyless provider (gives a tier with no SLA under heavy use).
+
+The cascade solves both ends at once. Provider priority in `tools/web.py`:
+
+1. **Serper** (`SERPER_API_KEY`) -- Google-backed, strongest index, low latency. Best quality when a key is set.
+2. **Brave Search** (`BRAVE_SEARCH_API_KEY`) -- independent index, strong quality, set as a second tier for diversity or redundancy.
+3. **DuckDuckGo** -- keyless, always available as a last resort with no configuration.
+
+Each provider is called only when the previous one returned `None` (key missing, or request failed). So a deployment with no keys at all still gets search results from DuckDuckGo; a production deployment can set Serper for Google quality without touching the rest of the code.
+
+The Last.fm API (`LASTFM_API_KEY`) follows the same principle: a public key is baked into `config.py` so the genre guard and catalogue fallback in `build_setlist` work with no setup, but the live environment value overrides it. Neither the web search cascade nor the Last.fm fallback require any key to function; they just get better when keys are present.
+
+**The alternative rejected:** a single keyed provider with a hard requirement. This would break the zero-config demo path that is important for a portfolio project and for evaluators who do not want to sign up for a search API before running the code.
+
+---
+
 ## Why gap-honesty is a design principle and not just a nice-to-have
 
 A fabricated Berlin club that does not exist is actively worse than an honest "I do not have that information." The user might buy a ticket, show up, and find nothing there. The same applies to a made-up track title (no audio plays), a hallucinated artist credit (misleading), or an invented event (never happened).

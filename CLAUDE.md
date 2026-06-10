@@ -120,7 +120,7 @@ berlin-rave-atlas/
     setlist.py            build_setlist, two-pass arc + Last.fm genre guard + BPM/role/set_story output, Deezer + YouTube
     clubs.py              find_club, deterministic Berlin club registry lookup
     club_registry.py      The Berlin club table (addresses, official links)
-    web.py                web_search, keyless DuckDuckGo fallback, gap-honest
+    web.py                web_search, Serper > Brave > DuckDuckGo provider cascade, gap-honest
   automation/
     weekend_digest.py     In-app APScheduler digest (local and demo use)
     weekend_telegram.py   Standalone reason-first Telegram digest (GitHub Actions cron)
@@ -145,7 +145,7 @@ The agent picks among these at runtime.
 4. `enrich_artist` pulls labels, genres, and releases from Discogs, falling back to MusicBrainz.
 5. `build_setlist` generates an energy-arc set list in two passes. Pass 1 has the model plan the arc, choose artists, assign a function role (opener, build, peak, sustain, resolution, closer), and estimate a genre-appropriate BPM target per position. Between passes, a Last.fm genre guard rejects any artist whose top tag is non-electronic and who carries no electronic tags in their top five, so only genuine electronic artists reach the catalogue call. Deezer is then queried with an `artist:"X"` precise search; for artists absent from Deezer, Last.fm `artist.getTopTracks` provides a catalogue fallback. Pass 2 has the model select a specific track from that verified list at temperature 0.2 (selection from a fixed menu, not generation) and write a two-to-three sentence set story. This structure eliminates hallucinated track titles structurally. Each track in the output carries: title, artist, role, energy level, BPM (from Deezer if available, otherwise the Pass 1 estimate), a one-line reason, a 30-second Deezer preview, and a YouTube link.
 6. `find_club` looks up a Berlin venue's official site, events page, and address from a curated registry, a deterministic fact lookup rather than a vector search.
-7. `web_search` is the keyless fallback for current facts outside the knowledge base, with results treated as untrusted data.
+7. `web_search` reaches for current facts outside the knowledge base. It tries three providers in priority order: Serper (Google-backed, set `SERPER_API_KEY`) first, Brave Search (`BRAVE_SEARCH_API_KEY`) second, DuckDuckGo (keyless, no SLA) last. Results are treated as untrusted data; the tool returns `grounded=False` on any failure rather than raising.
 
 ---
 
